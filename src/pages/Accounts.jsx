@@ -129,6 +129,7 @@ export default function Accounts() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100">
+                    <th className="py-2 pr-3 font-semibold"></th>
                     <th className="py-2 pr-3 font-semibold">Name</th>
                     <th className="py-2 pr-3 font-semibold">Position</th>
                     <th className="py-2 pr-3 font-semibold">Department</th>
@@ -139,6 +140,15 @@ export default function Accounts() {
                 <tbody>
                   {accounts.map(a => (
                     <tr key={a.id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                      <td className="py-2.5 pr-3">
+                        {a.avatar_url ? (
+                          <img src={a.avatar_url} alt={a.name} className="w-7 h-7 rounded-full object-cover" />
+                        ) : (
+                          <div className="w-7 h-7 rounded-full bg-nublue-100 text-nublue-600 flex items-center justify-center text-[10px] font-bold">
+                            {(a.name || '?').split(' ').map(n => n[0]).slice(0, 2).join('')}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2.5 pr-3 font-medium text-slate-700">{a.name}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{a.position}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{a.department}</td>

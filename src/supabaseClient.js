@@ -3,7 +3,13 @@ import { createClient } from '@supabase/supabase-js'
 // ⚠️ Replace these with your actual Supabase project credentials.
 // You can find them in: Supabase Dashboard > Project Settings > API
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://YOUR-PROJECT-REF.supabase.co'
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'YOUR-ANON-PUBLIC-KEY'
+// Supabase now calls this the "publishable key" (formerly "anon key") — same
+// thing, safe to expose client-side. We check both env var names so either
+// naming convention works.
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+  'YOUR-PUBLISHABLE-KEY'
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -24,3 +30,5 @@ export const DEPARTMENTS = [
 export const DOC_SUBFOLDERS = ['Document Drafts', 'Final Copies']
 
 export const STORAGE_BUCKET = 'scs-files'
+
+export const AVATAR_BUCKET = 'avatars'
