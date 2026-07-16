@@ -25,18 +25,19 @@ Theme: light mode, NU Blue (`#0033A0`) primary + NU Gold (`#FFC72C`) accent lini
 ## 1. Supabase setup
 
 1. Create a project at [supabase.com](https://supabase.com).
-2. Go to **SQL Editor** → paste the contents of `schema.sql` → Run. This creates all tables (`profiles`, `folders`, `files`, `access_requests`, `file_access_grants`), Row Level Security policies, and the private `scs-files` storage bucket.
-3. Go to **Authentication → Providers** and make sure **Email** is enabled. For simplest testing, go to **Authentication → Settings** and turn **OFF** "Confirm email" (so accounts created from the app can sign in immediately). In production you can leave email confirmation ON and instead deploy the optional Edge Function below.
-4. Create your **first Admin** account:
-   - Authentication → Users → **Add user** → enter an email + password.
-   - Copy that user's UUID.
-   - Back in SQL Editor, run (edit values first):
-     ```sql
-     insert into public.profiles (id, name, position, department, division, role)
-     values ('PASTE-USER-UUID-HERE', 'Juan Dela Cruz', 'Secretary General',
-             'Administrative Department', 'Executive', 'admin');
-     ```
-5. Go to **Project Settings → API** and copy your **Project URL** and **anon public key**.
+2. Go to **SQL Editor** → paste the **entire contents** of `schema.sql` → Run. One run does everything:
+   - Drops and recreates all tables (`profiles`, `folders`, `files`, `access_requests`, `file_access_grants`), Row Level Security policies, and the `scs-files` + `avatars` storage buckets.
+   - Sets up the auto-generated Member ID system (`20260001`-style IDs, assigned automatically to every account from here on).
+   - Safe to re-run any time you want a clean slate.
+3. Go to **Authentication → Providers** and make sure **Email** is enabled.
+4. Go to **Project Settings → API** and copy your **Project URL**, **anon/publishable key**, and **service_role key** into `.env` (see `.env.example`).
+5. Create the first 4 Administrative Department accounts with **one command**:
+   ```bash
+   npm install
+   npm run create-admins
+   ```
+   This creates real, working, pre-confirmed logins for all 4 accounts (names, positions, member IDs included) — no Dashboard clicking, no SQL, no UUID copying. Password for all 4: `SCSSC20262027`.
+6. Sign in with any of those 4 accounts and use the in-app **Manage Accounts** page to create everyone else — their Member ID gets assigned automatically too.
 
 ### (Optional but recommended) Instant account creation Edge Function
 The in-app "Create Account" form uses standard `supabase.auth.signUp`, which is subject to your project's email-confirmation setting. For an Admin to create fully working accounts instantly (no confirmation email), deploy the included Edge Function:

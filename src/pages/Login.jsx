@@ -62,7 +62,7 @@ export default function Login() {
                 <div className="mt-1 flex items-center bg-white/10 border border-white/25 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-nugold-400 focus-within:border-nugold-400 transition">
                   <Mail size={18} className="text-nugold-300 mr-2 flex-shrink-0" />
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}

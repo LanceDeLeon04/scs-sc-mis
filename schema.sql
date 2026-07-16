@@ -1,13 +1,55 @@
 -- =========================================================
 -- SCS Student Council File Repository System
--- Supabase SQL Schema (run in Supabase SQL Editor)
+-- FULL SCHEMA — ONE FILE, ONE RUN
+--
+-- Paste this ENTIRE file into a brand-new Supabase project's
+-- SQL Editor and hit Run, once. It will:
+--   1. Drop anything this app owns (safe on a fresh project —
+--      the DROPs are all "if exists" so they no-op on empty DBs)
+--   2. Create every table, function, trigger and RLS policy
+--   3. Create the storage buckets + their policies
+--   4. Seed the 4 bootstrap Administrative accounts directly
+--      into auth.users / auth.identities / public.profiles —
+--      no service_role key, no Node script, no Dashboard
+--      clicking required. They can log in immediately after
+--      this script finishes.
+--
+-- Safe to re-run any time: every step is idempotent (uses
+-- "if exists" / "if not exists" / "on conflict do nothing").
 -- =========================================================
 
--- 1. PROFILES (extends auth.users) --------------------------------------
-create table if not exists public.profiles (
+-- ---------------------------------------------------------
+-- 0. EXTENSIONS + CLEANUP (reverse dependency order)
+-- ---------------------------------------------------------
+create extension if not exists pgcrypto;
+
+drop table if exists public.file_access_grants cascade;
+drop table if exists public.access_requests cascade;
+drop table if exists public.files cascade;
+drop table if exists public.folders cascade;
+drop table if exists public.profiles cascade;
+drop table if exists public.member_id_counters cascade;
+
+drop function if exists public.set_profile_member_id() cascade;
+drop function if exists public.generate_member_id(int) cascade;
+
+drop policy if exists "Authenticated read storage" on storage.objects;
+drop policy if exists "Authenticated upload storage" on storage.objects;
+drop policy if exists "Admins delete storage" on storage.objects;
+drop policy if exists "Users can upload their own avatar" on storage.objects;
+drop policy if exists "Users can update their own avatar" on storage.objects;
+drop policy if exists "Public can view avatars" on storage.objects;
+
+
+-- ---------------------------------------------------------
+-- 1. PROFILES (extends auth.users)
+-- ---------------------------------------------------------
+create table public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
+  member_id text unique,
   name text not null,
   email text,
+  avatar_url text,
   position text not null,
   department text not null check (department in (
     'GENERAL','Administrative Department','Internal Affairs Department',
@@ -18,16 +60,28 @@ create table if not exists public.profiles (
   created_at timestamptz default now()
 );
 
-alter table public.profiles add column if not exists email text;
+alter table public.profiles enable row level security;
 
--- Human-readable Member ID (e.g. "20260001"), separate from the uuid
--- `id` above (which must stay a uuid since it's a foreign key into
--- auth.users). Auto-generated as <YEAR><4-digit sequence>: 20260001,
--- 20260002, ... rolling to 20270001 in 2027, etc. See
--- migrations/004_member_ids.sql for the same logic with more comments.
-alter table public.profiles add column if not exists member_id text unique;
+create policy "Users can view all profiles"
+  on public.profiles for select
+  using (auth.role() = 'authenticated');
 
-create table if not exists public.member_id_counters (
+create policy "Admins can insert profiles"
+  on public.profiles for insert
+  with check (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or not exists (select 1 from public.profiles) -- allow first bootstrap admin
+  );
+
+create policy "Admins can update profiles"
+  on public.profiles for update
+  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
+
+-- Human-readable Member ID (e.g. "20260001"). Auto-generated as
+-- <YEAR><4-digit sequence>: 20260001, 20260002, ... rolling to
+-- 20270001 in 2027, etc. `id` stays a uuid (FK into auth.users);
+-- `member_id` is the display-friendly one.
+create table public.member_id_counters (
   year int primary key,
   next_seq int not null default 1
 );
@@ -35,6 +89,8 @@ create table if not exists public.member_id_counters (
 create or replace function public.generate_member_id(p_year int default extract(year from now())::int)
 returns text
 language plpgsql
+security definer
+set search_path = public
 as $$
 declare
   v_seq int;
@@ -51,6 +107,8 @@ $$;
 create or replace function public.set_profile_member_id()
 returns trigger
 language plpgsql
+security definer
+set search_path = public
 as $$
 begin
   if new.member_id is null then
@@ -60,34 +118,15 @@ begin
 end;
 $$;
 
-drop trigger if exists trg_set_profile_member_id on public.profiles;
 create trigger trg_set_profile_member_id
   before insert on public.profiles
   for each row execute function public.set_profile_member_id();
 
-alter table public.profiles enable row level security;
 
-drop policy if exists "Users can view all profiles" on public.profiles;
-create policy "Users can view all profiles"
-  on public.profiles for select
-  using (auth.role() = 'authenticated');
-
-drop policy if exists "Admins can insert profiles" on public.profiles;
-create policy "Admins can insert profiles"
-  on public.profiles for insert
-  with check (
-    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
-    or not exists (select 1 from public.profiles) -- allow first bootstrap admin
-  );
-
-drop policy if exists "Admins can update profiles" on public.profiles;
-create policy "Admins can update profiles"
-  on public.profiles for update
-  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
-
-
--- 2. FOLDERS (custom sub-folders created inside module/department/[stage]) --
-create table if not exists public.folders (
+-- ---------------------------------------------------------
+-- 2. FOLDERS (custom sub-folders created inside module/department/[stage])
+-- ---------------------------------------------------------
+create table public.folders (
   id uuid primary key default gen_random_uuid(),
   module text not null check (module in ('templates','documents')),
   department text not null,
@@ -100,19 +139,19 @@ create table if not exists public.folders (
 
 alter table public.folders enable row level security;
 
-drop policy if exists "Authenticated can read folders" on public.folders;
 create policy "Authenticated can read folders"
   on public.folders for select
   using (auth.role() = 'authenticated');
 
-drop policy if exists "Authenticated can create folders" on public.folders;
 create policy "Authenticated can create folders"
   on public.folders for insert
   with check (auth.role() = 'authenticated');
 
 
--- 3. FILES ----------------------------------------------------------------
-create table if not exists public.files (
+-- ---------------------------------------------------------
+-- 3. FILES
+-- ---------------------------------------------------------
+create table public.files (
   id uuid primary key default gen_random_uuid(),
   document_name text not null,
   module text not null check (module in ('templates','documents')),
@@ -136,7 +175,6 @@ alter table public.files enable row level security;
 -- Everyone authenticated can SEE the listing (name/metadata) of every file,
 -- even outside their department (per requirements: "they can only see the
 -- list that other departments have but they must request access").
-drop policy if exists "Authenticated can view file listings" on public.files;
 create policy "Authenticated can view file listings"
   on public.files for select
   using (auth.role() = 'authenticated');
@@ -145,7 +183,6 @@ create policy "Authenticated can view file listings"
 -- Admins: can insert anywhere, any stage.
 -- Officers: can insert only into module='documents', stage='Document Drafts',
 -- and only within their own department.
-drop policy if exists "Upload rules" on public.files;
 create policy "Upload rules"
   on public.files for insert
   with check (
@@ -164,19 +201,19 @@ create policy "Upload rules"
     )
   );
 
-drop policy if exists "Admins can delete/update files" on public.files;
 create policy "Admins can delete/update files"
   on public.files for delete
   using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
 
-drop policy if exists "Admins can update files" on public.files;
 create policy "Admins can update files"
   on public.files for update
   using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
 
 
--- 4. ACCESS REQUESTS (Ticketing System) ------------------------------------
-create table if not exists public.access_requests (
+-- ---------------------------------------------------------
+-- 4. ACCESS REQUESTS (Ticketing System)
+-- ---------------------------------------------------------
+create table public.access_requests (
   id uuid primary key default gen_random_uuid(),
   file_id uuid references public.files(id) on delete cascade,
   requested_by uuid references public.profiles(id),
@@ -193,7 +230,6 @@ create table if not exists public.access_requests (
 
 alter table public.access_requests enable row level security;
 
-drop policy if exists "Users can view own requests, admins view all" on public.access_requests;
 create policy "Users can view own requests, admins view all"
   on public.access_requests for select
   using (
@@ -201,19 +237,19 @@ create policy "Users can view own requests, admins view all"
     or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
   );
 
-drop policy if exists "Authenticated can create requests" on public.access_requests;
 create policy "Authenticated can create requests"
   on public.access_requests for insert
   with check (auth.role() = 'authenticated');
 
-drop policy if exists "Admins can update requests" on public.access_requests;
 create policy "Admins can update requests"
   on public.access_requests for update
   using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
 
 
--- 5. GRANTED ACCESS (created automatically when a request is approved) -----
-create table if not exists public.file_access_grants (
+-- ---------------------------------------------------------
+-- 5. GRANTED ACCESS (created automatically when a request is approved)
+-- ---------------------------------------------------------
+create table public.file_access_grants (
   id uuid primary key default gen_random_uuid(),
   file_id uuid references public.files(id) on delete cascade,
   granted_to uuid references public.profiles(id) on delete cascade,
@@ -223,47 +259,152 @@ create table if not exists public.file_access_grants (
 
 alter table public.file_access_grants enable row level security;
 
-drop policy if exists "Users can view own grants" on public.file_access_grants;
 create policy "Users can view own grants"
   on public.file_access_grants for select
   using (granted_to = auth.uid() or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
 
-drop policy if exists "Admins can insert grants" on public.file_access_grants;
 create policy "Admins can insert grants"
   on public.file_access_grants for insert
   with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
 
 
--- 6. STORAGE BUCKET ---------------------------------------------------------
+-- ---------------------------------------------------------
+-- 6. STORAGE BUCKETS
+-- ---------------------------------------------------------
 insert into storage.buckets (id, name, public)
 values ('scs-files', 'scs-files', false)
 on conflict (id) do nothing;
 
--- Authenticated users can read objects (actual gating happens at the `files`
--- table row level + application layer, which only reveals storage_path/URLs
--- to users who own the department or have an approved grant).
-drop policy if exists "Authenticated read storage" on storage.objects;
 create policy "Authenticated read storage"
   on storage.objects for select
   using (bucket_id = 'scs-files' and auth.role() = 'authenticated');
 
-drop policy if exists "Authenticated upload storage" on storage.objects;
 create policy "Authenticated upload storage"
   on storage.objects for insert
   with check (bucket_id = 'scs-files' and auth.role() = 'authenticated');
 
-drop policy if exists "Admins delete storage" on storage.objects;
 create policy "Admins delete storage"
   on storage.objects for delete
   using (bucket_id = 'scs-files' and exists (
     select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
   ));
 
+-- Public avatar bucket (display pictures, not sensitive documents)
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+create policy "Users can upload their own avatar"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'avatars'
+    and auth.role() = 'authenticated'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "Users can update their own avatar"
+  on storage.objects for update
+  using (
+    bucket_id = 'avatars'
+    and auth.role() = 'authenticated'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+create policy "Public can view avatars"
+  on storage.objects for select
+  using (bucket_id = 'avatars');
+
+
+-- ---------------------------------------------------------
+-- 7. SEED DATA — the 4 bootstrap Administrative Department accounts
+--
+-- Inserted straight into auth.users + auth.identities (this works
+-- because the SQL Editor runs as the Postgres superuser, which has
+-- full access to the auth schema — no service_role key needed here).
+-- Each account is created pre-confirmed, so you can log in with the
+-- email/password below the second this script finishes.
+--
+--   lance.deleon@scs-sc.edu.ph        password: SCSSC20262027
+--   franchezka.nazareno@scs-sc.edu.ph password: SCSSC20262027
+--   hann.bacsa@scs-sc.edu.ph          password: SCSSC20262027
+--   randlyn.monares@scs-sc.edu.ph     password: SCSSC20262027
+--
+-- ⚠️ Change these passwords after first login (Settings page).
+-- Safe to re-run: existing accounts (matched by email) are skipped.
+-- ---------------------------------------------------------
+do $$
+declare
+  v_admins jsonb := '[
+    {"email":"lance.deleon@scs-sc.edu.ph","name":"Lance Win Alexandrei De Leon","position":"Council President","division":"Office of the President","member_id":"20260001"},
+    {"email":"franchezka.nazareno@scs-sc.edu.ph","name":"Franchezka Nazareno","position":"Executive Secretary","division":"Executive Support","member_id":"20260002"},
+    {"email":"hann.bacsa@scs-sc.edu.ph","name":"Hann Dareen Bacsa","position":"Deputy Secretary","division":"Executive Support","member_id":"20260003"},
+    {"email":"randlyn.monares@scs-sc.edu.ph","name":"Randlyn Faith Monares","position":"Administrative Aide","division":"Executive Support","member_id":"20260004"}
+  ]';
+  v_password text := 'SCSSC20262027';
+  v_admin jsonb;
+  v_user_id uuid;
+  v_existing_id uuid;
+begin
+  for v_admin in select * from jsonb_array_elements(v_admins)
+  loop
+    select id into v_existing_id from auth.users where email = v_admin->>'email' limit 1;
+
+    if v_existing_id is not null then
+      v_user_id := v_existing_id;
+    else
+      v_user_id := gen_random_uuid();
+
+      insert into auth.users (
+        instance_id, id, aud, role, email, encrypted_password,
+        email_confirmed_at, confirmation_token, recovery_token,
+        email_change_token_new, email_change,
+        raw_app_meta_data, raw_user_meta_data,
+        is_super_admin, created_at, updated_at
+      ) values (
+        '00000000-0000-0000-0000-000000000000',
+        v_user_id, 'authenticated', 'authenticated',
+        v_admin->>'email', crypt(v_password, gen_salt('bf')),
+        now(), '', '', '', '',
+        '{"provider":"email","providers":["email"]}'::jsonb,
+        jsonb_build_object('name', v_admin->>'name'),
+        false, now(), now()
+      );
+
+      insert into auth.identities (
+        id, provider_id, user_id, identity_data, provider,
+        last_sign_in_at, created_at, updated_at
+      ) values (
+        gen_random_uuid(), v_user_id::text, v_user_id,
+        jsonb_build_object('sub', v_user_id::text, 'email', v_admin->>'email'),
+        'email', now(), now(), now()
+      );
+    end if;
+
+    insert into public.profiles (id, member_id, name, email, position, department, division, role)
+    values (
+      v_user_id, v_admin->>'member_id', v_admin->>'name', v_admin->>'email',
+      v_admin->>'position', 'Administrative Department', v_admin->>'division', 'admin'
+    )
+    on conflict (id) do update set
+      member_id = excluded.member_id,
+      name = excluded.name,
+      email = excluded.email,
+      position = excluded.position,
+      department = excluded.department,
+      division = excluded.division,
+      role = excluded.role;
+  end loop;
+end $$;
+
+-- Keep the per-year member_id counter in sync with the seeded accounts above,
+-- so the NEXT account created (2026) starts at 20260005, not 20260001 again.
+insert into public.member_id_counters (year, next_seq)
+values (extract(year from now())::int, 5)
+on conflict (year) do update set
+  next_seq = greatest(public.member_id_counters.next_seq, excluded.next_seq);
+
 -- =========================================================
--- BOOTSTRAP: after creating your first user via Supabase Auth
--- (Dashboard > Authentication > Users > Add user), run this
--- to make them an admin. Replace the UUID + values.
+-- Done. Every other officer account can now be created straight
+-- from the app's "Manage Accounts" page (Administrative accounts
+-- only) — no more manual SQL needed after this one run.
 -- =========================================================
--- insert into public.profiles (id, name, position, department, division, role)
--- values ('PASTE-USER-UUID-HERE', 'Juan Dela Cruz', 'Secretary General',
---         'Administrative Department', 'Executive', 'admin');
