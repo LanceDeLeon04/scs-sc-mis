@@ -8,6 +8,7 @@ import Templates from './pages/Templates.jsx'
 import Documents from './pages/Documents.jsx'
 import Tickets from './pages/Tickets.jsx'
 import Accounts from './pages/Accounts.jsx'
+import Settings from './pages/Settings.jsx'
 
 function LoadingScreen() {
   return (
@@ -50,6 +51,7 @@ export default function App() {
       <Route path="/documents" element={<ProtectedLayout><Documents /></ProtectedLayout>} />
       <Route path="/tickets" element={<ProtectedLayout><Tickets /></ProtectedLayout>} />
       <Route path="/accounts" element={<ProtectedLayout adminOnly><Accounts /></ProtectedLayout>} />
+      <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )

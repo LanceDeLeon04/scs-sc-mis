@@ -39,18 +39,25 @@ export default function Accounts() {
       const newUserId = signUpData.user?.id
       if (!newUserId) throw new Error('Could not create account (check that email confirmations are handled).')
 
-      // 2. Create their profile row
-      const { error: profileErr } = await supabase.from('profiles').insert({
+      // 2. Create their profile row.
+      // member_id is intentionally omitted here -- a DB trigger
+      // (see migrations/004_member_ids.sql) auto-assigns the
+      // "20260001"-style ID in the same format used everywhere else.
+      const { data: newProfile, error: profileErr } = await supabase.from('profiles').insert({
         id: newUserId,
         name: form.name.trim(),
+        email: form.email.trim(),
         position: form.position.trim(),
         department: form.department,
         division: form.division.trim() || null,
         role: form.role,
-      })
+      }).select().single()
       if (profileErr) throw profileErr
 
-      setMsg({ type: 'success', text: `Account created for ${form.name}. They can sign in once their email is confirmed.` })
+      setMsg({
+        type: 'success',
+        text: `Account created for ${form.name} (Member ID: ${newProfile?.member_id || 'pending'}). They can sign in once their email is confirmed.`,
+      })
       setForm({ name: '', email: '', password: '', position: '', department: DEPARTMENTS[1], division: '', role: 'officer' })
       load()
     } catch (err) {
@@ -130,7 +137,9 @@ export default function Accounts() {
                 <thead>
                   <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100">
                     <th className="py-2 pr-3 font-semibold"></th>
+                    <th className="py-2 pr-3 font-semibold">Member ID</th>
                     <th className="py-2 pr-3 font-semibold">Name</th>
+                    <th className="py-2 pr-3 font-semibold">Email</th>
                     <th className="py-2 pr-3 font-semibold">Position</th>
                     <th className="py-2 pr-3 font-semibold">Department</th>
                     <th className="py-2 pr-3 font-semibold">Division</th>
@@ -149,7 +158,9 @@ export default function Accounts() {
                           </div>
                         )}
                       </td>
+                      <td className="py-2.5 pr-3 text-slate-500 font-mono text-xs">{a.member_id || '—'}</td>
                       <td className="py-2.5 pr-3 font-medium text-slate-700">{a.name}</td>
+                      <td className="py-2.5 pr-3 text-slate-500">{a.email || '—'}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{a.position}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{a.department}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{a.division || '—'}</td>

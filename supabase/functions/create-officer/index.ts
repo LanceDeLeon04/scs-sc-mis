@@ -46,7 +46,7 @@ serve(async (req) => {
     if (createErr) throw createErr
 
     const { error: profileErr } = await admin.from('profiles').insert({
-      id: created.user.id, name, position, department, division: division || null, role: role || 'officer',
+      id: created.user.id, name, email, position, department, division: division || null, role: role || 'officer',
     })
     if (profileErr) throw profileErr
 
