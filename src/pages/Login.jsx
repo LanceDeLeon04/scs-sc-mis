@@ -46,14 +46,18 @@ export default function Login() {
             <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-white/20 to-transparent rounded-t-3xl" />
             <div className="pointer-events-none absolute -top-1 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-nugold-400/80 to-transparent" />
 
-            <div className="relative flex flex-col items-center mb-7">
-              <div className="w-20 h-20 mb-3 rounded-2xl bg-white/90 shadow-lg flex items-center justify-center p-2">
-                <img src="/SCSLogo.png" alt="SCS Logo" className="w-full h-full object-contain" />
+            <div className="relative flex items-center gap-4 mb-7">
+              <img
+                src="/SCSLogo.png"
+                alt="SCS Logo"
+                className="w-14 h-14 object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.35)] flex-shrink-0"
+              />
+              <div className="flex flex-col">
+                <h1 className="text-xl font-extrabold text-white tracking-tight drop-shadow-sm leading-tight">
+                  SCS Student Council
+                </h1>
+                <p className="text-sm text-nugold-200 gold-underline pb-1">My Council Portal</p>
               </div>
-              <h1 className="text-xl font-extrabold text-white text-center tracking-tight drop-shadow-sm">
-                SCS Student Council
-              </h1>
-              <p className="text-sm text-nugold-200 gold-underline pb-1 mt-1">File Repository System</p>
             </div>
 
             <form onSubmit={handleSubmit} className="relative space-y-4">
