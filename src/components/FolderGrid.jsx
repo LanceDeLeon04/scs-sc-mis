@@ -25,6 +25,29 @@ export function FolderCard({ label, sublabel, onClick, color = 'blue' }) {
 export function NewFolderCard({ onCreate }) {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async () => {
+    if (!name.trim() || submitting) return
+    setSubmitting(true)
+    setError('')
+    try {
+      // onCreate may return an { error } result (see Documents.jsx / Templates.jsx).
+      // Await it so we can surface a real message instead of failing silently.
+      const result = await onCreate(name.trim())
+      if (result?.error) {
+        setError(result.error.message || 'Could not create folder.')
+        return
+      }
+      setOpen(false)
+      setName('')
+    } catch (err) {
+      setError(err.message || 'Could not create folder.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   if (!open) {
     return (
@@ -42,23 +65,23 @@ export function NewFolderCard({ onCreate }) {
     <div className="rounded-2xl border-2 border-nublue-300 bg-white p-4 flex flex-col gap-2 min-h-[128px] justify-center">
       <div className="flex items-center justify-between">
         <span className="text-xs font-semibold text-slate-500">Folder name</span>
-        <button onClick={() => { setOpen(false); setName('') }} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
+        <button onClick={() => { setOpen(false); setName(''); setError('') }} className="text-slate-400 hover:text-slate-600"><X size={14} /></button>
       </div>
       <input
         autoFocus
         value={name}
         onChange={e => setName(e.target.value)}
-        onKeyDown={e => {
-          if (e.key === 'Enter' && name.trim()) { onCreate(name.trim()); setOpen(false); setName('') }
-        }}
+        onKeyDown={e => { if (e.key === 'Enter') submit() }}
         placeholder="e.g. Minutes of the Meeting"
         className="border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm outline-none focus:ring-2 focus:ring-nublue-500"
       />
+      {error && <p className="text-[11px] text-red-600 leading-snug">{error}</p>}
       <button
-        onClick={() => { if (name.trim()) { onCreate(name.trim()); setOpen(false); setName('') } }}
-        className="bg-nublue-600 hover:bg-nublue-700 text-white text-xs font-semibold rounded-lg py-1.5 transition"
+        onClick={submit}
+        disabled={submitting}
+        className="bg-nublue-600 hover:bg-nublue-700 text-white text-xs font-semibold rounded-lg py-1.5 transition disabled:opacity-60"
       >
-        Create
+        {submitting ? 'Creating…' : 'Create'}
       </button>
     </div>
   )

@@ -30,13 +30,18 @@ export default function Templates() {
   const loadContents = useCallback(async () => {
     if (!department) return
     setLoading(true)
-    const { data: folderData } = await supabase
+    let folderQuery = supabase
       .from('folders')
       .select('*')
       .eq('module', 'templates')
       .eq('department', department)
-      .eq('parent_folder_id', currentFolderId)
       .order('created_at', { ascending: true })
+
+    folderQuery = currentFolderId
+      ? folderQuery.eq('parent_folder_id', currentFolderId)
+      : folderQuery.is('parent_folder_id', null)
+
+    const { data: folderData } = await folderQuery
 
     let fileQuery = supabase
       .from('files')
@@ -69,11 +74,13 @@ export default function Templates() {
   useEffect(() => { loadContents() }, [loadContents])
 
   const createFolder = async (name) => {
-    await supabase.from('folders').insert({
+    const { error } = await supabase.from('folders').insert({
       module: 'templates', department, name,
       parent_folder_id: currentFolderId, created_by: profile.id,
     })
+    if (error) return { error }
     loadContents()
+    return { error: null }
   }
 
   const handleDownload = async (file) => {
