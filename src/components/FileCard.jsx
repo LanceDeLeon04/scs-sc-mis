@@ -1,18 +1,38 @@
 import React from 'react'
-import { FileText, Download, Link as LinkIcon, Lock, User, Calendar, Tag, GitBranch } from 'lucide-react'
+import { FileText, Download, Link as LinkIcon, Lock, User, Calendar, Tag, GitBranch, Pencil, Trash2 } from 'lucide-react'
 
-export default function FileCard({ file, hasAccess, onDownload, onRequestAccess }) {
+export default function FileCard({ file, hasAccess, canManage, onDownload, onRequestAccess, onEdit, onDelete }) {
   const dateStr = file.date_uploaded
     ? new Date(file.date_uploaded).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     : '—'
 
   return (
-    <div className="group bg-white rounded-2xl border border-slate-100 card-glow hover:-translate-y-0.5 hover:shadow-lg transition-all p-4 flex flex-col animate-fade-in">
+    <div className="group bg-white rounded-2xl border border-slate-100 card-glow hover:-translate-y-0.5 hover:shadow-lg transition-all p-4 flex flex-col animate-fade-in relative">
+      {canManage && (
+        <div className="absolute top-3 right-3 flex items-center gap-1">
+          <button
+            onClick={() => onEdit(file)}
+            title="Edit"
+            aria-label="Edit file"
+            className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-50 hover:bg-nublue-50 active:bg-nublue-100 text-slate-500 hover:text-nublue-600 transition"
+          >
+            <Pencil size={13} />
+          </button>
+          <button
+            onClick={() => onDelete(file)}
+            title="Delete"
+            aria-label="Delete file"
+            className="w-7 h-7 flex items-center justify-center rounded-lg bg-slate-50 hover:bg-red-50 active:bg-red-100 text-slate-500 hover:text-red-600 transition"
+          >
+            <Trash2 size={13} />
+          </button>
+        </div>
+      )}
       <div className="flex items-start gap-3 mb-3">
         <div className="w-10 h-10 rounded-xl bg-nublue-50 flex items-center justify-center shrink-0">
           <FileText size={20} className="text-nublue-600" />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 pr-12">
           <p className="font-semibold text-sm text-slate-800 truncate" title={file.document_name}>
             {file.document_name}
           </p>

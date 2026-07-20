@@ -147,6 +147,44 @@ create policy "Authenticated can create folders"
   on public.folders for insert
   with check (auth.role() = 'authenticated');
 
+-- Admins can edit/delete any folder. A regular officer may only edit/delete
+-- a folder they created themselves, and only in a module/department/stage
+-- combination they'd currently be allowed to upload into (own department,
+-- Document Drafts). View-only access never grants edit/delete.
+create policy "Owners and admins can update folders"
+  on public.folders for update
+  using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or (
+      created_by = auth.uid()
+      and exists (
+        select 1 from public.profiles p
+        where p.id = auth.uid()
+        and p.role = 'officer'
+        and module = 'documents'
+        and stage = 'Document Drafts'
+        and department = p.department
+      )
+    )
+  );
+
+create policy "Owners and admins can delete folders"
+  on public.folders for delete
+  using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or (
+      created_by = auth.uid()
+      and exists (
+        select 1 from public.profiles p
+        where p.id = auth.uid()
+        and p.role = 'officer'
+        and module = 'documents'
+        and stage = 'Document Drafts'
+        and department = p.department
+      )
+    )
+  );
+
 
 -- ---------------------------------------------------------
 -- 3. FILES
@@ -201,13 +239,43 @@ create policy "Upload rules"
     )
   );
 
-create policy "Admins can delete/update files"
+-- Admins can edit/delete any file. A regular officer may only edit/delete a
+-- file they uploaded themselves, and only where they'd currently be allowed
+-- to upload (own department, Document Drafts). View-only access never
+-- grants edit/delete.
+create policy "Owners and admins can delete files"
   on public.files for delete
-  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
+  using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or (
+      uploaded_by = auth.uid()
+      and exists (
+        select 1 from public.profiles p
+        where p.id = auth.uid()
+        and p.role = 'officer'
+        and module = 'documents'
+        and stage = 'Document Drafts'
+        and department = p.department
+      )
+    )
+  );
 
-create policy "Admins can update files"
+create policy "Owners and admins can update files"
   on public.files for update
-  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
+  using (
+    exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+    or (
+      uploaded_by = auth.uid()
+      and exists (
+        select 1 from public.profiles p
+        where p.id = auth.uid()
+        and p.role = 'officer'
+        and module = 'documents'
+        and stage = 'Document Drafts'
+        and department = p.department
+      )
+    )
+  );
 
 
 -- ---------------------------------------------------------
@@ -288,6 +356,19 @@ create policy "Admins delete storage"
   using (bucket_id = 'scs-files' and exists (
     select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'
   ));
+
+-- Owners can delete/replace the storage object behind a file they uploaded
+-- (matches the "Owners and admins can delete/update files" policies above).
+create policy "Owners delete own storage"
+  on storage.objects for delete
+  using (
+    bucket_id = 'scs-files'
+    and exists (
+      select 1 from public.files f
+      where f.storage_path = storage.objects.name
+      and f.uploaded_by = auth.uid()
+    )
+  );
 
 -- Public avatar bucket (display pictures, not sensitive documents)
 insert into storage.buckets (id, name, public)
