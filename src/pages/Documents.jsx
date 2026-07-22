@@ -11,11 +11,26 @@ import { UploadCloud } from 'lucide-react'
 
 // Supabase does NOT return an error when a delete/update is blocked by
 // Row-Level Security -- it just reports success with 0 rows affected.
-// Without .select() we can't tell "deleted" apart from "silently blocked",
-// which is why edit/delete could look like it does nothing at all.
-const PERMISSION_HINT =
-  "You may not have permission to do this, or the database migration " +
-  "005_owner_edit_delete.sql hasn't been run on this project yet."
+// Without .select() we can't tell "deleted" apart from "silently blocked".
+// diagnosePermission compares the same conditions the RLS policy checks,
+// using data already in memory, so a denial tells you exactly which
+// condition failed instead of a generic message.
+function diagnosePermission(profile, isAdmin, item, kind) {
+  if (isAdmin) {
+    return `Denied even though your profile role is "${profile?.role}". This means the ` +
+      `admin check itself isn't matching in the database -- your logged-in session's ` +
+      `auth.uid() may not equal profiles.id for "${profile?.email}". Check that in Supabase.`
+  }
+  const lines = []
+  const ownerField = kind === 'folder' ? item.created_by : item.uploaded_by
+  lines.push(`your profile: role="${profile?.role}", department="${profile?.department}", id=${profile?.id}`)
+  lines.push(`this ${kind}: ${kind === 'folder' ? 'created_by' : 'uploaded_by'}=${ownerField}, module="${item.module}", stage="${item.stage}", department="${item.department}"`)
+  if (ownerField !== profile?.id) lines.push(`-> NOT the owner (ids don't match)`)
+  if (item.module !== 'documents') lines.push(`-> module is "${item.module}", policy requires "documents"`)
+  if (item.stage !== 'Document Drafts') lines.push(`-> stage is "${item.stage}", policy requires "Document Drafts"`)
+  if (item.department !== profile?.department) lines.push(`-> department mismatch`)
+  return lines.join('\n')
+}
 
 export default function Documents() {
   const { profile, isAdmin } = useAuth()
@@ -120,10 +135,9 @@ export default function Documents() {
   }
 
   const renameFolder = async (folder, newName) => {
-    // .select() lets us tell a real update from an RLS-silenced no-op.
     const { data, error } = await supabase.from('folders').update({ name: newName }).eq('id', folder.id).select()
     if (error) return { error }
-    if (!data || data.length === 0) return { error: { message: PERMISSION_HINT } }
+    if (!data || data.length === 0) return { error: { message: diagnosePermission(profile, isAdmin, folder, 'folder') } }
     loadContents()
     return { error: null }
   }
@@ -138,7 +152,7 @@ export default function Documents() {
         setConfirmState(null)
         const { data, error } = await supabase.from('folders').delete().eq('id', folder.id).select()
         if (error) { setAlertState({ title: 'Could not delete folder', message: error.message }); return }
-        if (!data || data.length === 0) { setAlertState({ title: 'Could not delete folder', message: PERMISSION_HINT }); return }
+        if (!data || data.length === 0) { setAlertState({ title: 'Denied — here\'s why', message: diagnosePermission(profile, isAdmin, folder, 'folder') }); return }
         loadContents()
       },
     })
@@ -154,7 +168,7 @@ export default function Documents() {
         setConfirmState(null)
         const { data, error } = await supabase.from('files').delete().eq('id', file.id).select()
         if (error) { setAlertState({ title: 'Could not delete file', message: error.message }); return }
-        if (!data || data.length === 0) { setAlertState({ title: 'Could not delete file', message: PERMISSION_HINT }); return }
+        if (!data || data.length === 0) { setAlertState({ title: 'Denied — here\'s why', message: diagnosePermission(profile, isAdmin, file, 'file') }); return }
         if (file.storage_path) {
           await supabase.storage.from(STORAGE_BUCKET).remove([file.storage_path])
         }

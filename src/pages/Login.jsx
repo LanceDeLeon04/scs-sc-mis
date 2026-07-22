@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useAuth } from '../lib/auth.jsx'
-import { useNavigate } from 'react-router-dom'
-import { Lock, Mail, ShieldCheck, Eye, EyeOff, GraduationCap } from 'lucide-react'
+import { useNavigate, Link } from 'react-router-dom'
+import { Lock, Mail, ShieldCheck, Eye, EyeOff, GraduationCap, ShieldAlert } from 'lucide-react'
 
 export default function Login() {
   const { signIn } = useAuth()
@@ -159,6 +159,14 @@ export default function Login() {
                 Accounts are created by Admins only. Contact your SCS Admin for access.
               </p>
             </div>
+
+            <Link
+              to="/grievance"
+              className="relative mt-2.5 w-full flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-semibold py-2 rounded-xl transition"
+            >
+              <ShieldAlert size={14} className="text-nugold-300" />
+              Report a Concern / Track a Ticket
+            </Link>
 
             <p className="relative text-[9px] text-white/35 text-center mt-2 tracking-wide">
               SCS Student Council · A.Y. 2026–2027

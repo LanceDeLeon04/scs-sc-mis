@@ -4,7 +4,7 @@ import { supabase, STORAGE_BUCKET } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
 
 export default function UploadModal({ module, department, stage, folderId, onClose, onUploaded, editingFile }) {
-  const { profile } = useAuth()
+  const { profile, isAdmin } = useAuth()
   const isEdit = !!editingFile
   const [documentName, setDocumentName] = useState(editingFile?.document_name || '')
   const [version, setVersion] = useState(editingFile?.version_number || '1.0')
@@ -50,10 +50,22 @@ export default function UploadModal({ module, department, stage, folderId, onClo
         }).eq('id', editingFile.id).select()
         if (updErr) throw updErr
         if (!updData || updData.length === 0) {
-          throw new Error(
-            "You don't have permission to edit this file, or the database migration " +
-            "005_owner_edit_delete.sql hasn't been run on this project yet."
-          )
+          const f = editingFile
+          if (isAdmin) {
+            throw new Error(
+              `Denied even though your role is "${profile?.role}". Your session's auth.uid() ` +
+              `probably doesn't equal profiles.id for "${profile?.email}" -- check that in Supabase.`
+            )
+          }
+          const lines = [
+            `your profile: role="${profile?.role}", department="${profile?.department}", id=${profile?.id}`,
+            `this file: uploaded_by=${f.uploaded_by}, module="${f.module}", stage="${f.stage}", department="${f.department}"`,
+          ]
+          if (f.uploaded_by !== profile?.id) lines.push('-> NOT the owner (ids don\'t match)')
+          if (f.module !== 'documents') lines.push(`-> module is "${f.module}", policy requires "documents"`)
+          if (f.stage !== 'Document Drafts') lines.push(`-> stage is "${f.stage}", policy requires "Document Drafts"`)
+          if (f.department !== profile?.department) lines.push('-> department mismatch')
+          throw new Error(lines.join('\n'))
         }
 
         // if a new attachment replaced an old one, or we switched to a link, clean up the old object
@@ -147,7 +159,7 @@ export default function UploadModal({ module, department, stage, folderId, onClo
               className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-nublue-500" />
           )}
 
-          {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
+          {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2 whitespace-pre-line">{error}</div>}
 
           <button type="submit" disabled={loading}
             className="w-full bg-nublue-600 hover:bg-nublue-700 text-white font-semibold py-2.5 rounded-xl transition disabled:opacity-60">

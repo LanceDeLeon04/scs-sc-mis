@@ -32,3 +32,12 @@ export const DOC_SUBFOLDERS = ['Document Drafts', 'Final Copies']
 export const STORAGE_BUCKET = 'scs-files'
 
 export const AVATAR_BUCKET = 'avatars'
+
+export const GRIEVANCE_EVIDENCE_BUCKET = 'grievance-evidence'
+
+export const GRIEVANCE_STATUS_LABELS = {
+  submitted: 'Submitted',
+  under_review: 'Under Review',
+  resolved: 'Resolved',
+  dismissed: 'Dismissed',
+}
