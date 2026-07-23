@@ -35,33 +35,28 @@ export default function Accounts() {
     setMsg(null)
     setSubmitting(true)
     try {
-      // 1. Create the auth user
-      const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-        email: form.email.trim(),
-        password: form.password,
+      // Calls the deployed `create-officer` Edge Function, which uses the
+      // service-role key server-side to create the auth user with
+      // email_confirm: true — no confirmation email is sent, and it isn't
+      // subject to Supabase's client-side auth email rate limit the way
+      // supabase.auth.signUp() is.
+      const { data, error: fnErr } = await supabase.functions.invoke('create-officer', {
+        body: {
+          email: form.email.trim(),
+          password: form.password,
+          name: form.name.trim(),
+          position: form.position.trim(),
+          department: form.department,
+          division: form.division.trim() || null,
+          role: form.role,
+        },
       })
-      if (signUpErr) throw signUpErr
-      const newUserId = signUpData.user?.id
-      if (!newUserId) throw new Error('Could not create account (check that email confirmations are handled).')
-
-      // 2. Create their profile row.
-      // member_id is intentionally omitted here -- a DB trigger
-      // (see migrations/004_member_ids.sql) auto-assigns the
-      // "20260001"-style ID in the same format used everywhere else.
-      const { data: newProfile, error: profileErr } = await supabase.from('profiles').insert({
-        id: newUserId,
-        name: form.name.trim(),
-        email: form.email.trim(),
-        position: form.position.trim(),
-        department: form.department,
-        division: form.division.trim() || null,
-        role: form.role,
-      }).select().single()
-      if (profileErr) throw profileErr
+      if (fnErr) throw fnErr
+      if (!data?.ok) throw new Error(data?.error || 'Failed to create account.')
 
       setMsg({
         type: 'success',
-        text: `Account created for ${form.name} (Member ID: ${newProfile?.member_id || 'pending'}). They can sign in once their email is confirmed.`,
+        text: `Account created for ${form.name}. They can sign in immediately — no email confirmation needed.`,
       })
       setForm({ name: '', email: '', password: '', position: '', department: DEPARTMENTS[1], division: '', role: 'officer' })
       load()
@@ -135,9 +130,8 @@ export default function Accounts() {
               {submitting ? 'Creating…' : 'Create Account'}
             </button>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Note: this uses standard Supabase sign-up. If your project has "Confirm email" enabled, the officer must
-              confirm their email before signing in. For instant, no-confirmation account creation, deploy the
-              optional <code className="bg-slate-100 px-1 rounded">create-officer</code> Edge Function described in README.md.
+              Accounts are created via the <code className="bg-slate-100 px-1 rounded">create-officer</code> Edge
+              Function — officers can sign in immediately with no email confirmation step.
             </p>
           </form>
         </div>
