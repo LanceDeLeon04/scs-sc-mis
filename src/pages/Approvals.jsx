@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Navbar from '../components/Navbar.jsx'
-import { supabase, DEPARTMENTS, APPROVAL_STATUS_LABELS } from '../supabaseClient'
+import { supabase, DEPARTMENTS, DIVISIONS_BY_DEPARTMENT, APPROVAL_STATUS_LABELS } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
 import {
   CheckCircle2, Circle, XCircle, Crown, Printer, PenTool, UploadCloud,
@@ -37,7 +37,9 @@ export default function Approvals() {
   const [busyId, setBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
   const [chainDept, setChainDept] = useState(DEPARTMENTS[1])
+  const [chainDivision, setChainDivision] = useState('') // '' = whole department
   const [chainSteps, setChainSteps] = useState([])
+  const [knownPositions, setKnownPositions] = useState([])
   const [newPosition, setNewPosition] = useState('')
   const [newIsPresident, setNewIsPresident] = useState(false)
 
@@ -71,16 +73,24 @@ export default function Approvals() {
 
   useEffect(() => { load() }, [load])
 
-  const loadChain = useCallback(async (dept) => {
-    const { data } = await supabase
-      .from('approval_chain_steps')
-      .select('*')
-      .eq('department', dept)
-      .order('step_order', { ascending: true })
+  const loadChain = useCallback(async (dept, division) => {
+    let q = supabase.from('approval_chain_steps').select('*').eq('department', dept)
+    q = division ? q.eq('division', division) : q.is('division', null)
+    const { data } = await q.order('step_order', { ascending: true })
     setChainSteps(data || [])
   }, [])
 
-  useEffect(() => { if (tab === 'chains') loadChain(chainDept) }, [tab, chainDept, loadChain])
+  // Positions must come from real profiles, never be free-typed, so a
+  // chain step can never drift out of sync with what officers are
+  // actually assigned in Accounts (typo-proof, per system requirement).
+  const loadKnownPositions = useCallback(async () => {
+    const { data } = await supabase.from('profiles').select('position').not('position', 'is', null)
+    const unique = Array.from(new Set((data || []).map(p => p.position?.trim()).filter(Boolean))).sort()
+    setKnownPositions(unique)
+  }, [])
+
+  useEffect(() => { if (tab === 'chains') { loadChain(chainDept, chainDivision); loadKnownPositions() } }, [tab, chainDept, chainDivision, loadChain, loadKnownPositions])
+  useEffect(() => { setChainDivision('') }, [chainDept])
 
   const currentPendingStep = (fileId) => {
     const steps = approvalsByFile[fileId] || []
@@ -96,6 +106,7 @@ export default function Approvals() {
   const progressFiles = useMemo(() => files.filter(f => f.approval_status === 'pending_approval'), [files])
   const printingFiles = useMemo(() => files.filter(f => f.approval_status === 'approved_for_printing'), [files])
   const rejectedFiles = useMemo(() => files.filter(f => f.approval_status === 'rejected'), [files])
+  const doneFiles = useMemo(() => files.filter(f => f.approval_status === 'done'), [files])
 
   const act = async (file, step, action) => {
     setBusyId(step.id)
@@ -152,17 +163,19 @@ export default function Approvals() {
   const addChainStep = async () => {
     if (!newPosition.trim()) return
     const nextOrder = (chainSteps[chainSteps.length - 1]?.step_order || 0) + 1
-    await supabase.from('approval_chain_steps').insert({
-      department: chainDept, step_order: nextOrder, position_title: newPosition.trim(), is_president: newIsPresident,
+    const { error } = await supabase.from('approval_chain_steps').insert({
+      department: chainDept, division: chainDivision || null, step_order: nextOrder,
+      position_title: newPosition.trim(), is_president: newIsPresident,
     })
+    if (error) { setMsg({ type: 'error', text: error.message }); return }
     setNewPosition('')
     setNewIsPresident(false)
-    loadChain(chainDept)
+    loadChain(chainDept, chainDivision)
   }
 
   const removeChainStep = async (step) => {
     await supabase.from('approval_chain_steps').delete().eq('id', step.id)
-    loadChain(chainDept)
+    loadChain(chainDept, chainDivision)
   }
 
   const tabs = [
@@ -170,10 +183,11 @@ export default function Approvals() {
     { id: 'progress', label: 'In Progress', count: progressFiles.length },
     ...(canPrint ? [{ id: 'printing', label: 'Ready for Printing', count: printingFiles.length }] : []),
     { id: 'rejected', label: 'Rejected', count: rejectedFiles.length },
+    { id: 'done', label: 'Done', count: doneFiles.length },
     ...(isAdmin ? [{ id: 'chains', label: 'Approval Chains', icon: Settings2 }] : []),
   ]
 
-  const list = tab === 'mine' ? mineFiles : tab === 'progress' ? progressFiles : tab === 'printing' ? printingFiles : tab === 'rejected' ? rejectedFiles : []
+  const list = tab === 'mine' ? mineFiles : tab === 'progress' ? progressFiles : tab === 'printing' ? printingFiles : tab === 'rejected' ? rejectedFiles : tab === 'done' ? doneFiles : []
 
   return (
     <div>
@@ -202,16 +216,30 @@ export default function Approvals() {
         {tab === 'chains' ? (
           <div className="bg-white rounded-2xl border border-slate-100 card-glow p-6 max-w-2xl">
             <p className="text-sm text-slate-500 mb-4">
-              Configure the ordered list of positions that must approve a document before it can be printed, for each department.
-              The last step should always be the <span className="font-semibold text-slate-700">President</span> (mark "Final approval — President" so they get the Approve for Printing button).
+              Configure the ordered list of positions that must approve a document before it can be printed, per department and
+              (optionally) per division. The last step should always be the <span className="font-semibold text-slate-700">President</span> (mark
+              "Final approval — President" so they get the Approve for Printing button). Positions are pulled from the officers
+              already on file in Accounts — not free-typed — so a chain step can never mismatch someone's actual position.
             </p>
-            <select value={chainDept} onChange={e => setChainDept(e.target.value)}
-              className="w-full mb-4 border border-slate-200 rounded-xl px-3 py-2 text-sm">
-              {DEPARTMENTS.filter(d => d !== 'GENERAL').map(d => <option key={d} value={d}>{d}</option>)}
-            </select>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <select value={chainDept} onChange={e => setChainDept(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                {DEPARTMENTS.filter(d => d !== 'GENERAL').map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+              <select value={chainDivision} onChange={e => setChainDivision(e.target.value)}
+                className="border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Whole department (fallback)</option>
+                {(DIVISIONS_BY_DEPARTMENT[chainDept] || []).map(dv => <option key={dv} value={dv}>{dv}</option>)}
+              </select>
+            </div>
+            <p className="text-xs text-slate-400 mb-4 -mt-2">
+              {chainDivision
+                ? `Editing the chain for ${chainDept} → ${chainDivision}. Files in this division use this chain instead of the department-wide one.`
+                : `Editing the department-wide fallback chain for ${chainDept}, used by any division that doesn't have its own chain.`}
+            </p>
 
             <div className="space-y-2 mb-4">
-              {chainSteps.length === 0 && <p className="text-xs text-slate-400">No approval chain set for this department yet.</p>}
+              {chainSteps.length === 0 && <p className="text-xs text-slate-400">No approval chain set for this department/division yet.</p>}
               {chainSteps.map(s => (
                 <div key={s.id} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2">
                   <span className="text-sm font-medium text-slate-700 flex items-center gap-2">
@@ -225,15 +253,22 @@ export default function Approvals() {
             </div>
 
             <div className="flex items-center gap-2">
-              <input value={newPosition} onChange={e => setNewPosition(e.target.value)} placeholder="e.g. Accounting Officer"
-                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm" />
+              <select value={newPosition} onChange={e => setNewPosition(e.target.value)}
+                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm">
+                <option value="">Select a position…</option>
+                {knownPositions.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
               <label className="flex items-center gap-1.5 text-xs text-slate-500 shrink-0">
                 <input type="checkbox" checked={newIsPresident} onChange={e => setNewIsPresident(e.target.checked)} /> President (final)
               </label>
-              <button onClick={addChainStep} className="flex items-center gap-1 bg-nublue-600 hover:bg-nublue-700 text-white text-sm font-semibold px-3 py-2 rounded-xl">
+              <button onClick={addChainStep} disabled={!newPosition}
+                className="flex items-center gap-1 bg-nublue-600 hover:bg-nublue-700 text-white text-sm font-semibold px-3 py-2 rounded-xl disabled:opacity-50">
                 <Plus size={14} /> Add
               </button>
             </div>
+            {knownPositions.length === 0 && (
+              <p className="text-xs text-amber-600 mt-2">No positions found in Accounts yet — add officers there first.</p>
+            )}
           </div>
         ) : loading ? (
           <p className="text-sm text-slate-400">Loading…</p>
@@ -316,14 +351,21 @@ export default function Approvals() {
                       {bothDone && (
                         <div className="mt-3 flex items-center gap-2 bg-nugold-50 border border-nugold-100 text-nugold-800 text-xs font-semibold rounded-xl px-4 py-3">
                           <UploadCloud size={16} className="shrink-0" />
-                          Printed and wet-signed — don't forget to upload the scanned copy to
-                          <span className="font-bold">{file.department} → Final Copies</span>.
+                          Printed and wet-signed — automatically moved to Done. Don't forget to upload the
+                          scanned copy to <span className="font-bold">{file.department} → Final Copies</span>.
                         </div>
                       )}
                     </div>
                   )}
 
-                  {!mine && step && tab !== 'printing' && (
+                  {tab === 'done' && (
+                    <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-4 text-xs text-slate-500">
+                      <span className="flex items-center gap-1.5"><Printer size={13} className="text-emerald-500" /> Printed · {file.printed_by_name}</span>
+                      <span className="flex items-center gap-1.5"><PenTool size={13} className="text-emerald-500" /> Wet Signed · {file.wet_signed_by_name}</span>
+                    </div>
+                  )}
+
+                  {!mine && step && tab !== 'printing' && tab !== 'done' && (
                     <p className="flex items-center gap-1.5 text-xs text-slate-400 mt-4">
                       <Clock size={13} /> Waiting on <span className="font-semibold text-slate-500">{step.position_title}</span>
                     </p>

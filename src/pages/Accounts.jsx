@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import Navbar from '../components/Navbar.jsx'
-import { supabase, DEPARTMENTS } from '../supabaseClient'
+import { supabase, DEPARTMENTS, DIVISIONS_BY_DEPARTMENT } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
 import { UserPlus, ShieldCheck, User, Mail, Lock, Briefcase, Building2, Layers } from 'lucide-react'
 
@@ -24,6 +24,11 @@ export default function Accounts() {
   useEffect(() => { load() }, [load])
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const setDepartment = (e) => {
+    const department = e.target.value
+    setForm(f => ({ ...f, department, division: '' }))
+  }
 
   const handleCreate = async (e) => {
     e.preventDefault()
@@ -86,14 +91,24 @@ export default function Accounts() {
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Department</label>
               <div className="mt-1 flex items-center border border-slate-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-nublue-500">
                 <Building2 size={16} className="text-nublue-400 mr-2 shrink-0" />
-                <select value={form.department} onChange={set('department')}
+                <select value={form.department} onChange={setDepartment}
                   className="w-full outline-none text-sm bg-transparent">
                   {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
             </div>
 
-            <Field label="Division" icon={Layers} value={form.division} onChange={set('division')} placeholder="e.g. Logistics" />
+            <div>
+              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Division</label>
+              <div className="mt-1 flex items-center border border-slate-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-nublue-500">
+                <Layers size={16} className="text-nublue-400 mr-2 shrink-0" />
+                <select value={form.division} onChange={set('division')}
+                  className="w-full outline-none text-sm bg-transparent">
+                  <option value="">Select division…</option>
+                  {(DIVISIONS_BY_DEPARTMENT[form.department] || []).map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+            </div>
 
             <div>
               <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Role Tag</label>

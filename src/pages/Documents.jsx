@@ -178,16 +178,32 @@ export default function Documents() {
   }
 
   const submitForApproval = async (file) => {
-    const { data: chainSteps } = await supabase
-      .from('approval_chain_steps')
-      .select('*')
-      .eq('department', file.department)
-      .order('step_order', { ascending: true })
+    // Prefer a chain configured for this file's specific division; fall
+    // back to the department-wide chain (division IS NULL) if none exists.
+    let chainSteps = null
+    if (file.division) {
+      const { data } = await supabase
+        .from('approval_chain_steps')
+        .select('*')
+        .eq('department', file.department)
+        .eq('division', file.division)
+        .order('step_order', { ascending: true })
+      chainSteps = data
+    }
+    if (!chainSteps || chainSteps.length === 0) {
+      const { data } = await supabase
+        .from('approval_chain_steps')
+        .select('*')
+        .eq('department', file.department)
+        .is('division', null)
+        .order('step_order', { ascending: true })
+      chainSteps = data
+    }
 
     if (!chainSteps || chainSteps.length === 0) {
       setAlertState({
         title: 'No approval chain configured',
-        message: `${file.department} doesn't have an approval chain set up yet. Ask an admin to configure one under For Review and Printing → Approval Chains.`,
+        message: `${file.department}${file.division ? ` · ${file.division}` : ''} doesn't have an approval chain set up yet. Ask an admin to configure one under For Review and Printing → Approval Chains.`,
       })
       return
     }

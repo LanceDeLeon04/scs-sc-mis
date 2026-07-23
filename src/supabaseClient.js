@@ -29,6 +29,43 @@ export const DEPARTMENTS = [
 
 export const DOC_SUBFOLDERS = ['Document Drafts', 'Final Copies']
 
+// Divisions available under each department. Used to populate the Division
+// dropdown wherever a department + division are chosen together (file
+// upload, account creation, etc).
+export const DIVISIONS_BY_DEPARTMENT = {
+  'Internal Affairs Department': [
+    'Finance Division',
+    'Quality Assurance Division',
+    'Vice President for Internal Affairs',
+  ],
+  'Operations Department': [
+    'Planning Division',
+    'Creatives Division',
+    'Vice President for Operations',
+  ],
+  'External Affairs Department': [
+    'Public Relations Division',
+    'Social Media Division',
+    'Vice President for External Affairs',
+  ],
+  'Administrative Department': [
+    'Office of the President',
+    'Secretariat Office',
+  ],
+  'GENERAL': [
+    'ALL DIVISIONS plus Commissions',
+    'Commission on Audit',
+    'Commission on Elections',
+    'Commission on Grievances',
+  ],
+}
+
+// Any department's document (Draft or Final Copy) may be marked
+// Confidential. Once marked, only Administrative Department members
+// (and admins) may see/access it -- enforced by the RLS select policy
+// in migrations/010_confidential_any_department.sql.
+export const CONFIDENTIAL_ACCESS_DEPARTMENT = 'Administrative Department'
+
 export const STORAGE_BUCKET = 'scs-files'
 
 export const AVATAR_BUCKET = 'avatars'
@@ -48,4 +85,5 @@ export const APPROVAL_STATUS_LABELS = {
   pending_approval: 'Pending Approval',
   approved_for_printing: 'Approved for Printing',
   rejected: 'Rejected',
+  done: 'Done',
 }

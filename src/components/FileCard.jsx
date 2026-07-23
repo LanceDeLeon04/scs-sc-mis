@@ -52,6 +52,11 @@ export default function FileCard({ file, hasAccess, canManage, onDownload, onReq
                 <badge.icon size={10} /> {badge.label}
               </span>
             )}
+            {file.is_confidential && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-800 text-white" title="Only Administrative Department can access this document">
+                <Lock size={10} /> Confidential
+              </span>
+            )}
           </div>
         </div>
       </div>

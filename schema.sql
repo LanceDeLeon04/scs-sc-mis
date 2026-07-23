@@ -212,17 +212,34 @@ create table public.files (
   external_link text,          -- OR an external link instead of a file
   uploaded_by uuid references public.profiles(id),
   uploaded_by_name text,
-  date_uploaded timestamptz default now()
+  date_uploaded timestamptz default now(),
+  -- Privacy lock: ANY department's document (Draft or Final Copy) can be
+  -- marked Confidential. Once marked, (see the select policy below) it is
+  -- only ever visible to Administrative Department members / admins --
+  -- regardless of which department actually owns/uploaded the file.
+  is_confidential boolean not null default false
 );
 
 alter table public.files enable row level security;
 
 -- Everyone authenticated can SEE the listing (name/metadata) of every file,
 -- even outside their department (per requirements: "they can only see the
--- list that other departments have but they must request access").
+-- list that other departments have but they must request access") --
+-- EXCEPT Confidential documents (which any department can mark on their own
+-- Drafts or Final Copies), which are only visible to Administrative
+-- Department members and admins. Confidential files don't even show up in
+-- another department's listing (no "request access" workaround for them),
+-- no matter which department originally owns/uploaded the file.
 create policy "Authenticated can view file listings"
   on public.files for select
-  using (auth.role() = 'authenticated');
+  using (
+    not is_confidential
+    or exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid()
+      and (p.role = 'admin' or p.department = 'Administrative Department')
+    )
+  );
 
 -- Insert rules enforced primarily in application logic + this policy:
 -- Admins: can insert anywhere, any stage.

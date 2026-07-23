@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { X, UploadCloud, Link as LinkIcon, Paperclip } from 'lucide-react'
-import { supabase, STORAGE_BUCKET } from '../supabaseClient'
+import { X, UploadCloud, Link as LinkIcon, Paperclip, Lock } from 'lucide-react'
+import { supabase, STORAGE_BUCKET, DIVISIONS_BY_DEPARTMENT, CONFIDENTIAL_ACCESS_DEPARTMENT } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
 
 export default function UploadModal({ module, department, stage, folderId, onClose, onUploaded, editingFile }) {
@@ -9,11 +9,25 @@ export default function UploadModal({ module, department, stage, folderId, onClo
   const [documentName, setDocumentName] = useState(editingFile?.document_name || '')
   const [version, setVersion] = useState(editingFile?.version_number || '1.0')
   const [division, setDivision] = useState(editingFile?.division || profile?.division || '')
+  const [isConfidential, setIsConfidential] = useState(!!editingFile?.is_confidential)
   const [mode, setMode] = useState(editingFile?.external_link ? 'link' : 'file')
   const [file, setFile] = useState(null)
   const [link, setLink] = useState(editingFile?.external_link || '')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  // Division options for the current department. If the file/editingFile
+  // already has a division that isn't in the list (legacy free-text data),
+  // keep it selectable so saving doesn't silently wipe it out.
+  const divisionOptions = DIVISIONS_BY_DEPARTMENT[department] || []
+  const allDivisionOptions = division && !divisionOptions.includes(division)
+    ? [division, ...divisionOptions]
+    : divisionOptions
+
+  // Any department's document -- Draft or Final Copy -- can be marked
+  // Confidential. Once marked, only the Administrative Department (and
+  // admins) can see/access it, enforced server-side by RLS.
+  const canMarkConfidential = true
 
   const handleUpload = async (e) => {
     e.preventDefault()
@@ -47,6 +61,7 @@ export default function UploadModal({ module, department, stage, folderId, onClo
           version_number: version.trim() || '1.0',
           storage_path,
           external_link,
+          is_confidential: canMarkConfidential ? isConfidential : false,
         }).eq('id', editingFile.id).select()
         if (updErr) throw updErr
         if (!updData || updData.length === 0) {
@@ -83,6 +98,7 @@ export default function UploadModal({ module, department, stage, folderId, onClo
           version_number: version.trim() || '1.0',
           storage_path,
           external_link,
+          is_confidential: canMarkConfidential ? isConfidential : false,
           uploaded_by: profile.id,
           uploaded_by_name: profile.name,
         })
@@ -129,11 +145,23 @@ export default function UploadModal({ module, department, stage, folderId, onClo
                 className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-nublue-500" />
             </div>
             <div>
-              <label className="text-xs font-semibold text-slate-500 uppercase">Division Name</label>
-              <input value={division} onChange={e => setDivision(e.target.value)}
-                className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-nublue-500" />
+              <label className="text-xs font-semibold text-slate-500 uppercase">Division</label>
+              <select value={division} onChange={e => setDivision(e.target.value)}
+                className="mt-1 w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-nublue-500 bg-white">
+                <option value="">Select division…</option>
+                {allDivisionOptions.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
           </div>
+
+          {canMarkConfidential && (
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 cursor-pointer">
+              <input type="checkbox" checked={isConfidential} onChange={e => setIsConfidential(e.target.checked)}
+                className="rounded border-slate-300 text-nublue-600 focus:ring-nublue-500" />
+              <Lock size={14} className="text-slate-400" />
+              Mark as Confidential — only the {CONFIDENTIAL_ACCESS_DEPARTMENT} can access
+            </label>
+          )}
 
           <div className="flex gap-2">
             <button type="button" onClick={() => setMode('file')}
