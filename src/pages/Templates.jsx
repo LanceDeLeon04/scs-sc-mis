@@ -49,7 +49,7 @@ export default function Templates() {
 
   const hasAccessToDept = (dept) => {
     if (isAdmin) return true
-    if (dept === 'GENERAL') return true
+    if (dept === 'GENERAL' || dept === 'Commissions') return true
     return profile?.department === dept
   }
 

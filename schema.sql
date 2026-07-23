@@ -59,7 +59,7 @@ create table public.profiles (
   avatar_url text,
   position text not null,
   department text not null check (department in (
-    'GENERAL','Administrative Department','Internal Affairs Department',
+    'GENERAL','Commissions','Administrative Department','Internal Affairs Department',
     'External Affairs Department','Operations Department'
   )),
   division text,
@@ -201,7 +201,7 @@ create table public.files (
   document_name text not null,
   module text not null check (module in ('templates','documents')),
   department text not null check (department in (
-    'GENERAL','Administrative Department','Internal Affairs Department',
+    'GENERAL','Commissions','Administrative Department','Internal Affairs Department',
     'External Affairs Department','Operations Department'
   )),
   stage text check (stage in ('Document Drafts','Final Copies')), -- required if module = 'documents'
@@ -769,7 +769,7 @@ alter table public.files
 create table if not exists public.approval_chain_steps (
   id uuid primary key default gen_random_uuid(),
   department text not null check (department in (
-    'GENERAL','Administrative Department','Internal Affairs Department',
+    'GENERAL','Commissions','Administrative Department','Internal Affairs Department',
     'External Affairs Department','Operations Department'
   )),
   step_order int not null check (step_order > 0),

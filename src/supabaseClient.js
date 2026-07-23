@@ -21,6 +21,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 // Departments used throughout the app
 export const DEPARTMENTS = [
   'GENERAL',
+  'Commissions',
   'Administrative Department',
   'Internal Affairs Department',
   'External Affairs Department',
@@ -52,8 +53,24 @@ export const DIVISIONS_BY_DEPARTMENT = {
     'Office of the President',
     'Secretariat Office',
   ],
+  // GENERAL isn't its own division-holding department -- it's the shared
+  // space every division can see. So instead of a placeholder like "ALL
+  // DIVISIONS", the dropdown lists every real division from every
+  // department, so a specific one can be picked when it matters.
   'GENERAL': [
-    'ALL DIVISIONS plus Commissions',
+    'Finance Division',
+    'Quality Assurance Division',
+    'Vice President for Internal Affairs',
+    'Planning Division',
+    'Creatives Division',
+    'Vice President for Operations',
+    'Public Relations Division',
+    'Social Media Division',
+    'Vice President for External Affairs',
+    'Office of the President',
+    'Secretariat Office',
+  ],
+  'Commissions': [
     'Commission on Audit',
     'Commission on Elections',
     'Commission on Grievances',

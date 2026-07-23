@@ -224,7 +224,7 @@ export default function Approvals() {
             <div className="grid grid-cols-2 gap-3 mb-4">
               <select value={chainDept} onChange={e => setChainDept(e.target.value)}
                 className="border border-slate-200 rounded-xl px-3 py-2 text-sm">
-                {DEPARTMENTS.filter(d => d !== 'GENERAL').map(d => <option key={d} value={d}>{d}</option>)}
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
               <select value={chainDivision} onChange={e => setChainDivision(e.target.value)}
                 className="border border-slate-200 rounded-xl px-3 py-2 text-sm">
