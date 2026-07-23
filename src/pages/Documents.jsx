@@ -177,6 +177,35 @@ export default function Documents() {
     })
   }
 
+  const submitForApproval = async (file) => {
+    const { data: chainSteps } = await supabase
+      .from('approval_chain_steps')
+      .select('*')
+      .eq('department', file.department)
+      .order('step_order', { ascending: true })
+
+    if (!chainSteps || chainSteps.length === 0) {
+      setAlertState({
+        title: 'No approval chain configured',
+        message: `${file.department} doesn't have an approval chain set up yet. Ask an admin to configure one under For Review and Printing → Approval Chains.`,
+      })
+      return
+    }
+
+    const { error: insertErr } = await supabase.from('file_approvals').insert(
+      chainSteps.map(s => ({
+        file_id: file.id, step_order: s.step_order, position_title: s.position_title, is_president: s.is_president,
+      }))
+    )
+    if (insertErr) { setAlertState({ title: 'Could not submit for approval', message: insertErr.message }); return }
+
+    await supabase.from('files').update({
+      approval_status: 'pending_approval', submitted_for_approval_by: profile.id, submitted_for_approval_at: new Date().toISOString(),
+    }).eq('id', file.id)
+
+    loadContents()
+  }
+
   const handleDownload = async (file) => {
     if (file.external_link) { window.open(file.external_link, '_blank'); return }
     if (file.storage_path) {
@@ -268,6 +297,8 @@ export default function Documents() {
               onRequestAccess={setRequestFile}
               onEdit={setEditingFile}
               onDelete={deleteFile}
+              canSubmitForApproval={stage === 'Document Drafts' && (!file.approval_status || file.approval_status === 'none') && canManageFile(file)}
+              onSubmitForApproval={submitForApproval}
             />
           ))}
         </div>

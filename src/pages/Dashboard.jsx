@@ -3,22 +3,23 @@ import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
-import { FileSpreadsheet, FileStack, Inbox, ShieldCheck, ArrowRight } from 'lucide-react'
+import { FileSpreadsheet, FileStack, Inbox, ShieldCheck, ArrowRight, Printer } from 'lucide-react'
 
 export default function Dashboard() {
   const { profile, isAdmin } = useAuth()
-  const [stats, setStats] = useState({ files: 0, templates: 0, pending: 0 })
+  const [stats, setStats] = useState({ files: 0, templates: 0, pending: 0, review: 0 })
 
   useEffect(() => {
     (async () => {
-      const [{ count: fileCount }, { count: templateCount }, { count: pendingCount }] = await Promise.all([
+      const [{ count: fileCount }, { count: templateCount }, { count: pendingCount }, { count: reviewCount }] = await Promise.all([
         supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'documents'),
         supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'templates'),
         isAdmin
           ? supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
           : supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('requested_by', profile.id),
+        supabase.from('files').select('*', { count: 'exact', head: true }).neq('approval_status', 'none'),
       ])
-      setStats({ files: fileCount || 0, templates: templateCount || 0, pending: pendingCount || 0 })
+      setStats({ files: fileCount || 0, templates: templateCount || 0, pending: pendingCount || 0, review: reviewCount || 0 })
     })()
   }, [isAdmin, profile])
 
@@ -26,13 +27,14 @@ export default function Dashboard() {
     { to: '/templates', label: 'Templates', icon: FileSpreadsheet, value: stats.templates, sub: 'total templates', color: 'from-nublue-600 to-nublue-500' },
     { to: '/documents', label: 'Documents', icon: FileStack, value: stats.files, sub: 'total documents', color: 'from-nublue-700 to-nublue-600' },
     { to: '/tickets', label: 'Access Requests', icon: Inbox, value: stats.pending, sub: 'pending', color: 'from-nugold-500 to-nugold-400' },
+    { to: '/approvals', label: 'For Review and Printing', icon: Printer, value: stats.review, sub: 'in the approval workflow', color: 'from-nublue-800 to-nublue-600' },
   ]
 
   return (
     <div>
       <Navbar title={`Welcome, ${profile?.name?.split(' ')[0] || 'Officer'}`} />
       <div className="p-8">
-        <div className="grid md:grid-cols-3 gap-5 mb-8">
+        <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
           {cards.map(c => (
             <Link key={c.to} to={c.to}
               className="group relative overflow-hidden rounded-2xl p-6 text-white card-glow hover:-translate-y-0.5 hover:shadow-xl transition-all">

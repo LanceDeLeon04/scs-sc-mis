@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../lib/auth.jsx'
 import { supabase, AVATAR_BUCKET } from '../supabaseClient'
-import { LayoutGrid, FileStack, FileSpreadsheet, Inbox, UserPlus, LogOut, ShieldCheck, Camera, Loader2, Settings as SettingsIcon, MessageSquareWarning } from 'lucide-react'
+import { LayoutGrid, FileStack, FileSpreadsheet, Inbox, UserPlus, LogOut, ShieldCheck, Camera, Loader2, Settings as SettingsIcon, MessageSquareWarning, Printer } from 'lucide-react'
 
 const linkBase = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-colors'
 const linkActive = 'bg-nublue-600 text-white shadow-glow'
@@ -84,6 +84,9 @@ export default function Sidebar() {
         </NavLink>
         <NavLink to="/documents" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkIdle}`}>
           <FileStack size={18} /> Documents
+        </NavLink>
+        <NavLink to="/approvals" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkIdle}`}>
+          <Printer size={18} /> For Review and Printing
         </NavLink>
         <NavLink to="/tickets" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkIdle}`}>
           <Inbox size={18} /> Access Requests

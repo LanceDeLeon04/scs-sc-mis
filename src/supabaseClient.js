@@ -41,3 +41,11 @@ export const GRIEVANCE_STATUS_LABELS = {
   resolved: 'Resolved',
   dismissed: 'Dismissed',
 }
+
+// Approvals + Printing workflow
+export const APPROVAL_STATUS_LABELS = {
+  none: 'Not Submitted',
+  pending_approval: 'Pending Approval',
+  approved_for_printing: 'Approved for Printing',
+  rejected: 'Rejected',
+}

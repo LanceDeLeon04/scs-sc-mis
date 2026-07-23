@@ -1,7 +1,14 @@
 import React from 'react'
-import { FileText, Download, Link as LinkIcon, Lock, User, Calendar, Tag, GitBranch, Pencil, Trash2 } from 'lucide-react'
+import { FileText, Download, Link as LinkIcon, Lock, User, Calendar, Tag, GitBranch, Pencil, Trash2, Send, ShieldCheck, Clock, XCircle } from 'lucide-react'
 
-export default function FileCard({ file, hasAccess, canManage, onDownload, onRequestAccess, onEdit, onDelete }) {
+const APPROVAL_BADGE = {
+  pending_approval: { label: 'Pending Approval', cls: 'bg-amber-50 text-amber-600', icon: Clock },
+  approved_for_printing: { label: 'Approved for Printing', cls: 'bg-emerald-50 text-emerald-600', icon: ShieldCheck },
+  rejected: { label: 'Rejected', cls: 'bg-red-50 text-red-600', icon: XCircle },
+}
+
+export default function FileCard({ file, hasAccess, canManage, onDownload, onRequestAccess, onEdit, onDelete, canSubmitForApproval, onSubmitForApproval }) {
+  const badge = file.approval_status && file.approval_status !== 'none' ? APPROVAL_BADGE[file.approval_status] : null
   const dateStr = file.date_uploaded
     ? new Date(file.date_uploaded).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
     : '—'
@@ -36,9 +43,16 @@ export default function FileCard({ file, hasAccess, canManage, onDownload, onReq
           <p className="font-semibold text-sm text-slate-800 truncate" title={file.document_name}>
             {file.document_name}
           </p>
-          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-nublue-600 bg-nublue-50 px-2 py-0.5 rounded-full mt-1">
-            <GitBranch size={10} /> v{file.version_number || '1.0'}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap mt-1">
+            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-nublue-600 bg-nublue-50 px-2 py-0.5 rounded-full">
+              <GitBranch size={10} /> v{file.version_number || '1.0'}
+            </span>
+            {badge && (
+              <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${badge.cls}`}>
+                <badge.icon size={10} /> {badge.label}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -70,6 +84,15 @@ export default function FileCard({ file, hasAccess, canManage, onDownload, onReq
           className="w-full flex items-center justify-center gap-2 text-sm font-semibold bg-nugold-500 hover:bg-nugold-600 text-nublue-900 rounded-xl py-2 transition"
         >
           <Lock size={15} /> Request Access
+        </button>
+      )}
+
+      {canSubmitForApproval && (
+        <button
+          onClick={() => onSubmitForApproval(file)}
+          className="w-full flex items-center justify-center gap-2 text-sm font-semibold bg-nublue-50 hover:bg-nublue-100 text-nublue-700 rounded-xl py-2 mt-2 transition"
+        >
+          <Send size={15} /> Submit for Approval
         </button>
       )}
     </div>
