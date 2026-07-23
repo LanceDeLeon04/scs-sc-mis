@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Navbar from '../components/Navbar.jsx'
-import { supabase, DEPARTMENTS, DIVISIONS_BY_DEPARTMENT, APPROVAL_STATUS_LABELS } from '../supabaseClient'
+import { supabase, DEPARTMENTS, DIVISIONS_BY_DEPARTMENT, APPROVAL_STATUS_LABELS, STORAGE_BUCKET } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
 import {
   CheckCircle2, Circle, XCircle, Crown, Printer, PenTool, UploadCloud,
-  ChevronRight, Settings2, Plus, Trash2, RotateCcw, FileText, Clock, Loader2,
+  ChevronRight, Settings2, Plus, Trash2, RotateCcw, FileText, Clock, Loader2, Eye,
 } from 'lucide-react'
 
 const PRINT_POSITIONS = ['Executive Secretary', 'Deputy Secretary']
@@ -107,6 +107,18 @@ export default function Approvals() {
   const printingFiles = useMemo(() => files.filter(f => f.approval_status === 'approved_for_printing'), [files])
   const rejectedFiles = useMemo(() => files.filter(f => f.approval_status === 'rejected'), [files])
   const doneFiles = useMemo(() => files.filter(f => f.approval_status === 'done'), [files])
+
+  // Lets an approver open/preview the actual document before acting on it.
+  // Mirrors Documents.jsx's handleDownload: external link opens directly,
+  // otherwise a short-lived signed URL is generated for the storage object.
+  const viewDocument = async (file) => {
+    if (file.external_link) { window.open(file.external_link, '_blank'); return }
+    if (file.storage_path) {
+      const { data, error } = await supabase.storage.from(STORAGE_BUCKET).createSignedUrl(file.storage_path, 60)
+      if (error || !data) { setMsg({ type: 'error', text: error?.message || 'Could not open the document.' }); return }
+      window.open(data.signedUrl, '_blank')
+    }
+  }
 
   const act = async (file, step, action) => {
     setBusyId(step.id)
@@ -295,6 +307,13 @@ export default function Approvals() {
                       {APPROVAL_STATUS_LABELS[file.approval_status]}
                     </span>
                   </div>
+
+                  {(file.storage_path || file.external_link) && (
+                    <button onClick={() => viewDocument(file)}
+                      className="flex items-center gap-1.5 text-xs font-semibold text-nublue-600 hover:text-nublue-700 mt-3">
+                      <Eye size={13} /> View Document
+                    </button>
+                  )}
 
                   <div className="flex items-center gap-2 flex-wrap mt-4">
                     {steps.map((s, i) => (
