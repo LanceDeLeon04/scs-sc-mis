@@ -96,6 +96,14 @@ export const GRIEVANCE_STATUS_LABELS = {
   dismissed: 'Dismissed',
 }
 
+// Leave Requests (Leave Form) — same pending/approved/denied shape as
+// Access Requests, both live in the Requests page (Tickets.jsx)
+export const LEAVE_STATUS_LABELS = {
+  pending: 'Pending',
+  approved: 'Approved',
+  denied: 'Denied',
+}
+
 // Approvals + Printing workflow
 export const APPROVAL_STATUS_LABELS = {
   none: 'Not Submitted',

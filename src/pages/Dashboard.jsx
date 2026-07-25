@@ -1,39 +1,51 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
+import LeaveFormModal from '../components/LeaveFormModal.jsx'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
-import { FileSpreadsheet, FileStack, Inbox, ShieldCheck, ArrowRight, Printer } from 'lucide-react'
+import { FileSpreadsheet, FileStack, Inbox, ShieldCheck, ArrowRight, Printer, CalendarDays } from 'lucide-react'
 
 export default function Dashboard() {
   const { profile, isAdmin } = useAuth()
-  const [stats, setStats] = useState({ files: 0, templates: 0, pending: 0, review: 0 })
+  const [stats, setStats] = useState({ files: 0, templates: 0, pending: 0, review: 0, leave: 0 })
+  const [showLeaveForm, setShowLeaveForm] = useState(false)
 
-  useEffect(() => {
-    (async () => {
-      const [{ count: fileCount }, { count: templateCount }, { count: pendingCount }, { count: reviewCount }] = await Promise.all([
-        supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'documents'),
-        supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'templates'),
-        isAdmin
-          ? supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
-          : supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('requested_by', profile.id),
-        supabase.from('files').select('*', { count: 'exact', head: true }).neq('approval_status', 'none'),
-      ])
-      setStats({ files: fileCount || 0, templates: templateCount || 0, pending: pendingCount || 0, review: reviewCount || 0 })
-    })()
+  const loadStats = useCallback(async () => {
+    const [{ count: fileCount }, { count: templateCount }, { count: pendingCount }, { count: reviewCount }, { count: leaveCount }] = await Promise.all([
+      supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'documents'),
+      supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'templates'),
+      isAdmin
+        ? supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+        : supabase.from('access_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('requested_by', profile.id),
+      supabase.from('files').select('*', { count: 'exact', head: true }).neq('approval_status', 'none'),
+      isAdmin
+        ? supabase.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+        : supabase.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('requested_by', profile.id),
+    ])
+    setStats({ files: fileCount || 0, templates: templateCount || 0, pending: pendingCount || 0, review: reviewCount || 0, leave: leaveCount || 0 })
   }, [isAdmin, profile])
+
+  useEffect(() => { loadStats() }, [loadStats])
 
   const cards = [
     { to: '/templates', label: 'Templates', icon: FileSpreadsheet, value: stats.templates, sub: 'total templates', color: 'from-nublue-600 to-nublue-500' },
     { to: '/documents', label: 'Documents', icon: FileStack, value: stats.files, sub: 'total documents', color: 'from-nublue-700 to-nublue-600' },
     { to: '/tickets', label: 'Access Requests', icon: Inbox, value: stats.pending, sub: 'pending', color: 'from-nugold-500 to-nugold-400' },
     { to: '/approvals', label: 'For Review and Printing', icon: Printer, value: stats.review, sub: 'in the approval workflow', color: 'from-nublue-800 to-nublue-600' },
+    { to: '/tickets', label: 'Leave Requests', icon: CalendarDays, value: stats.leave, sub: 'pending', color: 'from-emerald-600 to-emerald-500' },
   ]
 
   return (
     <div>
       <Navbar title={`Welcome, ${profile?.name?.split(' ')[0] || 'Officer'}`} />
       <div className="p-8">
+        <div className="flex items-center justify-end mb-5">
+          <button onClick={() => setShowLeaveForm(true)}
+            className="flex items-center gap-2 bg-nugold-500 hover:bg-nugold-600 text-nublue-900 text-sm font-semibold px-4 py-2.5 rounded-xl transition card-glow">
+            <CalendarDays size={16} /> Apply for Leave
+          </button>
+        </div>
         <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
           {cards.map(c => (
             <Link key={c.to} to={c.to}
@@ -84,6 +96,10 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {showLeaveForm && (
+        <LeaveFormModal onClose={() => setShowLeaveForm(false)} onSubmitted={loadStats} />
+      )}
     </div>
   )
 }

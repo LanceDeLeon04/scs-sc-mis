@@ -89,7 +89,7 @@ export default function Sidebar() {
           <Printer size={18} /> For Review and Printing
         </NavLink>
         <NavLink to="/tickets" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkIdle}`}>
-          <Inbox size={18} /> Access Requests
+          <Inbox size={18} /> Requests
         </NavLink>
         <NavLink to="/grievances" className={({ isActive }) => `${linkBase} ${isActive ? linkActive : linkIdle}`}>
           <MessageSquareWarning size={18} /> Feedback &amp; Grievances

@@ -24,6 +24,7 @@
 create extension if not exists pgcrypto;
 
 drop table if exists public.file_access_grants cascade;
+drop table if exists public.leave_requests cascade;
 drop table if exists public.access_requests cascade;
 drop table if exists public.files cascade;
 drop table if exists public.folders cascade;
@@ -358,6 +359,48 @@ create policy "Users can view own grants"
 create policy "Admins can insert grants"
   on public.file_access_grants for insert
   with check (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
+
+
+-- ---------------------------------------------------------
+-- 5B. LEAVE REQUESTS (Leave Form — lives in the same "Requests"
+--     area as Access Requests, and follows the same simple
+--     Approval Process: pending -> approved/denied by an Admin)
+-- ---------------------------------------------------------
+create table public.leave_requests (
+  id uuid primary key default gen_random_uuid(),
+  requested_by uuid references public.profiles(id),
+  requested_by_name text,
+  department text,
+  position text,
+  reason text not null,
+  substitute_id uuid references public.profiles(id),
+  substitute_name text,
+  date_from date not null,
+  date_to date not null,
+  status text not null default 'pending' check (status in ('pending','approved','denied')),
+  responded_by uuid references public.profiles(id),
+  response_note text,
+  created_at timestamptz default now(),
+  responded_at timestamptz,
+  constraint leave_requests_date_range check (date_to >= date_from)
+);
+
+alter table public.leave_requests enable row level security;
+
+create policy "Users can view own leave requests, admins view all"
+  on public.leave_requests for select
+  using (
+    requested_by = auth.uid()
+    or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin')
+  );
+
+create policy "Authenticated can create leave requests"
+  on public.leave_requests for insert
+  with check (auth.role() = 'authenticated');
+
+create policy "Admins can update leave requests"
+  on public.leave_requests for update
+  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'admin'));
 
 
 -- ---------------------------------------------------------
