@@ -12,6 +12,7 @@ import Settings from './pages/Settings.jsx'
 import Grievance from './pages/Grievance.jsx'
 import Grievances from './pages/Grievances.jsx'
 import Approvals from './pages/Approvals.jsx'
+import Attendance from './pages/Attendance.jsx'
 
 function LoadingScreen() {
   return (
@@ -57,6 +58,7 @@ export default function App() {
       <Route path="/tickets" element={<ProtectedLayout><Tickets /></ProtectedLayout>} />
       <Route path="/grievances" element={<ProtectedLayout><Grievances /></ProtectedLayout>} />
       <Route path="/approvals" element={<ProtectedLayout><Approvals /></ProtectedLayout>} />
+      <Route path="/attendance" element={<ProtectedLayout><Attendance /></ProtectedLayout>} />
       <Route path="/accounts" element={<ProtectedLayout adminOnly><Accounts /></ProtectedLayout>} />
       <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
       <Route path="*" element={<Navigate to="/" replace />} />

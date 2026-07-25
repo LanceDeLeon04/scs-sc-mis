@@ -112,3 +112,13 @@ export const APPROVAL_STATUS_LABELS = {
   rejected: 'Rejected',
   done: 'Done',
 }
+
+// Daily Attendance (Time In / Time Out)
+export const ATTENDANCE_EVIDENCE_BUCKET = 'attendance-evidence'
+
+export const ATTENDANCE_STATUS_LABELS = {
+  open: 'Timed In',
+  pending: 'Pending Approval',
+  approved: 'Approved',
+  denied: 'Denied',
+}

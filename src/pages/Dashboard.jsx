@@ -2,17 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import Navbar from '../components/Navbar.jsx'
 import LeaveFormModal from '../components/LeaveFormModal.jsx'
+import AttendanceWidget from '../components/AttendanceWidget.jsx'
 import { supabase } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
-import { FileSpreadsheet, FileStack, Inbox, ShieldCheck, ArrowRight, Printer, CalendarDays } from 'lucide-react'
+import { FileSpreadsheet, FileStack, Inbox, ShieldCheck, ArrowRight, Printer, CalendarDays, ClipboardCheck } from 'lucide-react'
 
 export default function Dashboard() {
   const { profile, isAdmin } = useAuth()
-  const [stats, setStats] = useState({ files: 0, templates: 0, pending: 0, review: 0, leave: 0 })
+  const [stats, setStats] = useState({ files: 0, templates: 0, pending: 0, review: 0, leave: 0, attendance: 0 })
   const [showLeaveForm, setShowLeaveForm] = useState(false)
 
   const loadStats = useCallback(async () => {
-    const [{ count: fileCount }, { count: templateCount }, { count: pendingCount }, { count: reviewCount }, { count: leaveCount }] = await Promise.all([
+    const [{ count: fileCount }, { count: templateCount }, { count: pendingCount }, { count: reviewCount }, { count: leaveCount }, { count: attendanceCount }] = await Promise.all([
       supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'documents'),
       supabase.from('files').select('*', { count: 'exact', head: true }).eq('module', 'templates'),
       isAdmin
@@ -22,8 +23,11 @@ export default function Dashboard() {
       isAdmin
         ? supabase.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending')
         : supabase.from('leave_requests').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('requested_by', profile.id),
+      isAdmin
+        ? supabase.from('attendance_records').select('*', { count: 'exact', head: true }).eq('status', 'pending')
+        : supabase.from('attendance_records').select('*', { count: 'exact', head: true }).eq('status', 'pending').eq('approver_position', profile.position),
     ])
-    setStats({ files: fileCount || 0, templates: templateCount || 0, pending: pendingCount || 0, review: reviewCount || 0, leave: leaveCount || 0 })
+    setStats({ files: fileCount || 0, templates: templateCount || 0, pending: pendingCount || 0, review: reviewCount || 0, leave: leaveCount || 0, attendance: attendanceCount || 0 })
   }, [isAdmin, profile])
 
   useEffect(() => { loadStats() }, [loadStats])
@@ -34,6 +38,7 @@ export default function Dashboard() {
     { to: '/tickets', label: 'Access Requests', icon: Inbox, value: stats.pending, sub: 'pending', color: 'from-nugold-500 to-nugold-400' },
     { to: '/approvals', label: 'For Review and Printing', icon: Printer, value: stats.review, sub: 'in the approval workflow', color: 'from-nublue-800 to-nublue-600' },
     { to: '/tickets', label: 'Leave Requests', icon: CalendarDays, value: stats.leave, sub: 'pending', color: 'from-emerald-600 to-emerald-500' },
+    { to: '/attendance', label: 'Attendance For My Approval', icon: ClipboardCheck, value: stats.attendance, sub: 'pending your review', color: 'from-nugold-600 to-nugold-500' },
   ]
 
   return (
@@ -46,6 +51,8 @@ export default function Dashboard() {
             <CalendarDays size={16} /> Apply for Leave
           </button>
         </div>
+        <AttendanceWidget />
+
         <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-5 mb-8">
           {cards.map(c => (
             <Link key={c.to} to={c.to}
