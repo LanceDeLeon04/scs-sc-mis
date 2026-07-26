@@ -50,12 +50,14 @@ function EvidenceViewer({ paths, onClose }) {
   )
 }
 
-function RecordCard({ r, canAct, onApprove, onDeny, busy, canDelete, onDelete, deleteBusy }) {
+function RecordCard({ r, canAct, onApprove, onDeny, busy, canDelete, onDelete, deleteBusy, canOverride, onOverride, overrideBusy }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const Icon = statusIcon[r.status] || Clock
   const [note, setNote] = useState('')
   const [showDenyBox, setShowDenyBox] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showOverrideBox, setShowOverrideBox] = useState(false)
+  const [overrideNote, setOverrideNote] = useState('')
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 card-glow p-5">
@@ -66,7 +68,7 @@ function RecordCard({ r, canAct, onApprove, onDeny, busy, canDelete, onDelete, d
         </div>
         <div className="flex items-center gap-2">
           <span className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full border ${statusStyle[r.status]}`}>
-            <Icon size={12} /> {ATTENDANCE_STATUS_LABELS[r.status]}
+            <Icon size={12} /> {r.override_closed_by ? `Timed Out by ${r.override_closed_by_name}` : ATTENDANCE_STATUS_LABELS[r.status]}
           </span>
           {canDelete && (
             <button
@@ -118,8 +120,36 @@ function RecordCard({ r, canAct, onApprove, onDeny, busy, canDelete, onDelete, d
           <span className="font-semibold">Reason:</span> {r.review_note}
         </p>
       )}
+
+      {r.override_closed_by && r.override_note && (
+        <p className="text-xs text-amber-600 mt-3 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          <span className="font-semibold">Note:</span> {r.override_note}
+        </p>
+      )}
       {r.status === 'approved' && r.reviewed_by_name && (
         <p className="text-xs text-emerald-600 mt-3">Reviewed by {r.reviewed_by_name}</p>
+      )}
+
+      {canOverride && r.status === 'open' && (
+        <div className="mt-4 pt-4 border-t border-slate-100">
+          {showOverrideBox && (
+            <textarea value={overrideNote} onChange={e => setOverrideNote(e.target.value)} rows={2}
+              placeholder="Reason (e.g. forgot to time out, on leave, unreachable)…"
+              className="w-full border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-500 mb-2" />
+          )}
+          {!showOverrideBox ? (
+            <button disabled={overrideBusy} onClick={() => setShowOverrideBox(true)}
+              className="flex items-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-semibold px-4 py-2 rounded-xl transition disabled:opacity-50">
+              <Hourglass size={15} /> Time Out on Behalf
+            </button>
+          ) : (
+            <button disabled={overrideBusy || !overrideNote.trim()} onClick={() => onOverride(r, overrideNote)}
+              className="flex items-center gap-2 bg-amber-600 hover:bg-amber-700 text-white text-sm font-semibold px-4 py-2 rounded-xl transition disabled:opacity-50">
+              {overrideBusy ? <Loader2 size={15} className="animate-spin" /> : <Hourglass size={15} />}
+              Confirm Time Out &amp; Send for Approval
+            </button>
+          )}
+        </div>
       )}
 
       {canAct && r.status === 'pending' && (
@@ -163,6 +193,7 @@ export default function Attendance() {
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
   const [deleteBusyId, setDeleteBusyId] = useState(null)
+  const [overrideBusyId, setOverrideBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
 
   const load = useCallback(async () => {
@@ -219,6 +250,34 @@ export default function Attendance() {
     setDeleteBusyId(null)
     if (error) { setMsg({ type: 'error', text: error.message }); return }
     setMsg({ type: 'success', text: `Deleted ${r.officer_name}'s attendance record for ${r.work_date}.` })
+    load()
+  }
+
+  // Available to admins and to whoever currently holds the Council
+  // President position -- lets them close out an officer's still-open
+  // (never timed-out) attendance record on that officer's behalf,
+  // e.g. when someone forgot to time out, is on leave, or is
+  // unreachable. Sends the record straight to 'pending' for the
+  // normal approval chain, with a required note explaining why it
+  // was closed this way instead of by the officer themselves. Backed
+  // by the RLS update policy in migrations/018_attendance_override_timeout.sql.
+  const overrideTimeOut = async (r, note) => {
+    const trimmed = note?.trim()
+    if (!trimmed) return
+    setOverrideBusyId(r.id)
+    setMsg(null)
+    const { error } = await supabase.from('attendance_records').update({
+      time_out: new Date().toISOString(),
+      status: 'pending',
+      submitted_at: new Date().toISOString(),
+      override_closed_by: profile.id,
+      override_closed_by_name: profile.name,
+      override_note: trimmed,
+      override_closed_at: new Date().toISOString(),
+    }).eq('id', r.id)
+    setOverrideBusyId(null)
+    if (error) { setMsg({ type: 'error', text: error.message }); return }
+    setMsg({ type: 'success', text: `Timed out ${r.officer_name} for ${r.work_date} and sent it for approval.` })
     load()
   }
 
@@ -329,6 +388,7 @@ export default function Attendance() {
               <RecordCard
                 key={r.id} r={r} canAct={tab === 'approvals'} onApprove={approve} onDeny={deny} busy={busyId === r.id}
                 canDelete={canManageAll} onDelete={deleteRecord} deleteBusy={deleteBusyId === r.id}
+                canOverride={canManageAll && tab === 'all'} onOverride={overrideTimeOut} overrideBusy={overrideBusyId === r.id}
               />
             ))}
           </div>

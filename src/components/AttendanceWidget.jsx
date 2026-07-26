@@ -68,7 +68,7 @@ export default function AttendanceWidget() {
     )
     if (record.status === 'pending') return (
       <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full">
-        <Hourglass size={12} /> Pending approval &middot; {record.approver_position}
+        <Hourglass size={12} /> {record.override_closed_by ? 'Timed out for you' : 'Pending approval'} &middot; {record.approver_position}
       </span>
     )
     if (record.status === 'approved') return (
@@ -128,6 +128,12 @@ export default function AttendanceWidget() {
       {record?.status === 'denied' && record?.review_note && (
         <p className="text-xs text-red-500 mt-3 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
           <span className="font-semibold">Reason:</span> {record.review_note}
+        </p>
+      )}
+
+      {record?.override_closed_by && record?.override_note && (
+        <p className="text-xs text-amber-600 mt-3 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+          <span className="font-semibold">Note:</span> {record.override_note}
         </p>
       )}
 
