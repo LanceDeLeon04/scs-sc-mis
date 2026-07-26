@@ -50,6 +50,16 @@ supabase secrets set SUPABASE_SERVICE_ROLE_KEY=YOUR-SERVICE-ROLE-KEY
 
 Then, in `src/pages/Accounts.jsx`, swap the `supabase.auth.signUp(...)` call for a `fetch` to `${SUPABASE_URL}/functions/v1/create-officer` (POST, with the Admin's access token in the `Authorization` header and the form fields as JSON body). This keeps the service-role key server-side only.
 
+### Account editing / password reset / deletion Edge Function
+
+The **Manage Accounts** page's per-account "Edit" panel (update details, reset password to the default `SCSSC20262027`, delete account) calls a second Edge Function the same way. Deploy it alongside `create-officer`:
+
+```bash
+supabase functions deploy manage-officer
+```
+
+It reuses the same `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` secrets already set above, and is admin-only (checked server-side against `profiles.role`).
+
 ---
 
 ## 2. Local setup

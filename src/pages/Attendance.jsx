@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth.jsx'
 import {
   Clock, CheckCircle2, XCircle, Hourglass, Image as ImageIcon,
   Loader2, ClipboardList, FileText, CalendarCheck, Users, X,
+  Trash2, AlertTriangle, BarChart3,
 } from 'lucide-react'
 
 const statusStyle = {
@@ -49,11 +50,12 @@ function EvidenceViewer({ paths, onClose }) {
   )
 }
 
-function RecordCard({ r, canAct, onApprove, onDeny, busy }) {
+function RecordCard({ r, canAct, onApprove, onDeny, busy, canDelete, onDelete, deleteBusy }) {
   const [showEvidence, setShowEvidence] = useState(false)
   const Icon = statusIcon[r.status] || Clock
   const [note, setNote] = useState('')
   const [showDenyBox, setShowDenyBox] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 card-glow p-5">
@@ -62,9 +64,21 @@ function RecordCard({ r, canAct, onApprove, onDeny, busy }) {
           <p className="font-semibold text-slate-800">{r.officer_name}</p>
           <p className="text-xs text-slate-400 mt-0.5">{r.department} &middot; {r.position} &middot; {r.work_date}</p>
         </div>
-        <span className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full border ${statusStyle[r.status]}`}>
-          <Icon size={12} /> {ATTENDANCE_STATUS_LABELS[r.status]}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full border ${statusStyle[r.status]}`}>
+            <Icon size={12} /> {ATTENDANCE_STATUS_LABELS[r.status]}
+          </span>
+          {canDelete && (
+            <button
+              disabled={deleteBusy}
+              onClick={() => { if (!confirmDelete) { setConfirmDelete(true); return } onDelete(r) }}
+              title={`Delete ${r.officer_name}'s record for ${r.work_date}`}
+              className={`flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full border transition disabled:opacity-50 ${confirmDelete ? 'bg-red-600 text-white border-red-600' : 'bg-red-50 text-red-500 border-red-100 hover:bg-red-100'}`}>
+              {deleteBusy ? <Loader2 size={12} className="animate-spin" /> : confirmDelete ? <AlertTriangle size={12} /> : <Trash2 size={12} />}
+              {confirmDelete ? 'Confirm' : 'Delete'}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3 mt-4 text-xs">
@@ -140,26 +154,33 @@ function RecordCard({ r, canAct, onApprove, onDeny, busy }) {
 }
 
 export default function Attendance() {
-  const { profile, isAdmin } = useAuth()
-  const [tab, setTab] = useState('mine') // mine | approvals
+  const { profile, isAdmin, isCouncilPresident } = useAuth()
+  const canManageAll = isAdmin || isCouncilPresident
+  const [tab, setTab] = useState('mine') // mine | approvals | summary
   const [mine, setMine] = useState([])
   const [pendingForMe, setPendingForMe] = useState([])
+  const [all, setAll] = useState([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState(null)
+  const [deleteBusyId, setDeleteBusyId] = useState(null)
   const [msg, setMsg] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [{ data: mineData }, { data: forMeData }] = await Promise.all([
+    const [{ data: mineData }, { data: forMeData }, { data: allData }] = await Promise.all([
       supabase.from('attendance_records').select('*').eq('officer_id', profile?.id).order('work_date', { ascending: false }),
       isAdmin
         ? supabase.from('attendance_records').select('*').eq('status', 'pending').order('submitted_at', { ascending: false })
         : supabase.from('attendance_records').select('*').eq('status', 'pending').eq('approver_position', profile?.position).order('submitted_at', { ascending: false }),
+      canManageAll
+        ? supabase.from('attendance_records').select('*').order('work_date', { ascending: false })
+        : Promise.resolve({ data: [] }),
     ])
     setMine(mineData || [])
     setPendingForMe(forMeData || [])
+    setAll(allData || [])
     setLoading(false)
-  }, [profile, isAdmin])
+  }, [profile, isAdmin, canManageAll])
 
   useEffect(() => { if (profile?.id) load() }, [profile, load])
 
@@ -186,7 +207,40 @@ export default function Attendance() {
     load()
   }
 
-  const list = tab === 'mine' ? mine : pendingForMe
+  // Available to admins and to whoever currently holds the Council
+  // President position -- lets them remove a specific officer's
+  // attendance record for a specific day (e.g. a mistaken/duplicate
+  // entry), backed by the RLS delete policy in
+  // migrations/015_council_president_attendance_delete.sql.
+  const deleteRecord = async (r) => {
+    setDeleteBusyId(r.id)
+    setMsg(null)
+    const { error } = await supabase.from('attendance_records').delete().eq('id', r.id)
+    setDeleteBusyId(null)
+    if (error) { setMsg({ type: 'error', text: error.message }); return }
+    setMsg({ type: 'success', text: `Deleted ${r.officer_name}'s attendance record for ${r.work_date}.` })
+    load()
+  }
+
+  // Per-officer roll-up for the Summary tab.
+  const summary = React.useMemo(() => {
+    const byOfficer = new Map()
+    for (const r of all) {
+      const key = r.officer_id
+      if (!byOfficer.has(key)) {
+        byOfficer.set(key, {
+          officer_id: r.officer_id, officer_name: r.officer_name, department: r.department,
+          position: r.position, total: 0, approved: 0, pending: 0, denied: 0, open: 0,
+        })
+      }
+      const s = byOfficer.get(key)
+      s.total += 1
+      s[r.status] = (s[r.status] || 0) + 1
+    }
+    return Array.from(byOfficer.values()).sort((a, b) => a.officer_name.localeCompare(b.officer_name))
+  }, [all])
+
+  const list = tab === 'mine' ? mine : tab === 'approvals' ? pendingForMe : tab === 'all' ? all : []
 
   return (
     <div>
@@ -204,6 +258,18 @@ export default function Attendance() {
               <span className="ml-1 text-[10px] font-bold bg-nugold-500 text-nublue-900 px-1.5 py-0.5 rounded-full">{pendingForMe.length}</span>
             )}
           </button>
+          {canManageAll && (
+            <>
+              <button onClick={() => setTab('all')}
+                className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition ${tab === 'all' ? 'bg-nublue-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <Users size={15} /> All Records
+              </button>
+              <button onClick={() => setTab('summary')}
+                className={`flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition ${tab === 'summary' ? 'bg-nublue-600 text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                <BarChart3 size={15} /> Summary
+              </button>
+            </>
+          )}
         </div>
 
         {msg && (
@@ -212,16 +278,58 @@ export default function Attendance() {
           </div>
         )}
 
-        {loading ? (
+        {tab === 'summary' ? (
+          loading ? (
+            <p className="text-sm text-slate-400">Loading…</p>
+          ) : summary.length === 0 ? (
+            <p className="text-sm text-slate-400">No attendance records yet.</p>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-100 card-glow p-6 overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400 uppercase border-b border-slate-100">
+                    <th className="py-2 pr-3 font-semibold">Officer</th>
+                    <th className="py-2 pr-3 font-semibold">Position</th>
+                    <th className="py-2 pr-3 font-semibold">Department</th>
+                    <th className="py-2 pr-3 font-semibold text-center">Total</th>
+                    <th className="py-2 pr-3 font-semibold text-center">Approved</th>
+                    <th className="py-2 pr-3 font-semibold text-center">Pending</th>
+                    <th className="py-2 pr-3 font-semibold text-center">Denied</th>
+                    <th className="py-2 font-semibold text-center">Open</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.map(s => (
+                    <tr key={s.officer_id} className="border-b border-slate-50 hover:bg-slate-50/60">
+                      <td className="py-2.5 pr-3 font-medium text-slate-700">{s.officer_name}</td>
+                      <td className="py-2.5 pr-3 text-slate-500">{s.position}</td>
+                      <td className="py-2.5 pr-3 text-slate-500">{s.department}</td>
+                      <td className="py-2.5 pr-3 text-center text-slate-600">{s.total}</td>
+                      <td className="py-2.5 pr-3 text-center text-emerald-600 font-semibold">{s.approved || 0}</td>
+                      <td className="py-2.5 pr-3 text-center text-amber-600 font-semibold">{s.pending || 0}</td>
+                      <td className="py-2.5 pr-3 text-center text-red-500 font-semibold">{s.denied || 0}</td>
+                      <td className="py-2.5 text-center text-nublue-600 font-semibold">{s.open || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        ) : loading ? (
           <p className="text-sm text-slate-400">Loading…</p>
         ) : list.length === 0 ? (
           <p className="text-sm text-slate-400">
-            {tab === 'mine' ? 'No attendance records yet.' : 'Nothing pending your approval right now.'}
+            {tab === 'mine' ? 'No attendance records yet.'
+              : tab === 'approvals' ? 'Nothing pending your approval right now.'
+              : 'No attendance records yet.'}
           </p>
         ) : (
           <div className="space-y-4">
             {list.map(r => (
-              <RecordCard key={r.id} r={r} canAct={tab === 'approvals'} onApprove={approve} onDeny={deny} busy={busyId === r.id} />
+              <RecordCard
+                key={r.id} r={r} canAct={tab === 'approvals'} onApprove={approve} onDeny={deny} busy={busyId === r.id}
+                canDelete={canManageAll} onDelete={deleteRecord} deleteBusy={deleteBusyId === r.id}
+              />
             ))}
           </div>
         )}

@@ -116,6 +116,13 @@ export const APPROVAL_STATUS_LABELS = {
 // Daily Attendance (Time In / Time Out)
 export const ATTENDANCE_EVIDENCE_BUCKET = 'attendance-evidence'
 
+// Password an admin's "Reset Password" action resets an officer's
+// account to. Kept here as a single source of truth so the Accounts
+// page can display it without duplicating it as a magic string --
+// the actual reset happens server-side in the manage-officer Edge
+// Function, which must be kept in sync with this value.
+export const ACCOUNT_DEFAULT_PASSWORD = 'SCSSC20262027'
+
 export const ATTENDANCE_STATUS_LABELS = {
   open: 'Timed In',
   pending: 'Pending Approval',

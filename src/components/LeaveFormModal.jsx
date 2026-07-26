@@ -10,8 +10,12 @@ export default function LeaveFormModal({ onClose, onSubmitted }) {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [officers, setOfficers] = useState([])
+  const [myLeaveRequests, setMyLeaveRequests] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const MAX_CONSECUTIVE_DAYS = 5
+  const MAX_MONTHLY_DAYS = 5
 
   // Substitute picks from real officer profiles (not free-typed), same
   // reasoning as the approval-chain position picker in Approvals.jsx —
@@ -27,9 +31,77 @@ export default function LeaveFormModal({ onClose, onSubmitted }) {
     })()
   }, [profile])
 
+  // Own pending/approved requests, used to compute the running monthly
+  // total client-side (mirrors the DB trigger in
+  // migrations/017_leave_request_limits.sql, which is the source of
+  // truth -- this is just for a friendly heads-up before submitting).
+  useEffect(() => {
+    (async () => {
+      if (!profile?.id) return
+      const { data } = await supabase
+        .from('leave_requests')
+        .select('date_from, date_to, status')
+        .eq('requested_by', profile.id)
+        .in('status', ['pending', 'approved'])
+      setMyLeaveRequests(data || [])
+    })()
+  }, [profile])
+
+  const daysInRange = (from, to) => {
+    if (!from || !to) return 0
+    const a = new Date(from + 'T00:00:00')
+    const b = new Date(to + 'T00:00:00')
+    return Math.round((b - a) / 86400000) + 1
+  }
+
+  const daysOverlapMonth = (from, to, monthStart, monthEnd) => {
+    const start = new Date(from + 'T00:00:00') > monthStart ? new Date(from + 'T00:00:00') : monthStart
+    const end = new Date(to + 'T00:00:00') < monthEnd ? new Date(to + 'T00:00:00') : monthEnd
+    const diff = Math.round((end - start) / 86400000) + 1
+    return diff > 0 ? diff : 0
+  }
+
+  // For each calendar month the requested range touches, how many days
+  // is the officer already committed to (excluding this new request),
+  // and how many would this request add.
+  const monthlyBreakdown = () => {
+    if (!dateFrom || !dateTo) return []
+    const months = []
+    let cursor = new Date(dateFrom + 'T00:00:00')
+    const end = new Date(dateTo + 'T00:00:00')
+    while (cursor <= end) {
+      const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+      const monthEnd = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
+      const existing = myLeaveRequests.reduce(
+        (sum, r) => sum + daysOverlapMonth(r.date_from, r.date_to, monthStart, monthEnd), 0
+      )
+      const adding = daysOverlapMonth(dateFrom, dateTo, monthStart, monthEnd)
+      months.push({
+        label: monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric' }),
+        existing, adding, total: existing + adding,
+      })
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+    }
+    return months
+  }
+
+  const breakdown = monthlyBreakdown()
+  const consecutiveDays = daysInRange(dateFrom, dateTo)
+  const overConsecutiveLimit = consecutiveDays > MAX_CONSECUTIVE_DAYS
+  const overMonthlyLimit = breakdown.some(m => m.total > MAX_MONTHLY_DAYS)
+
   const submit = async (e) => {
     e.preventDefault()
     if (dateTo < dateFrom) { setError('Date To cannot be before Date From.'); return }
+    if (overConsecutiveLimit) {
+      setError(`A single leave request can't exceed ${MAX_CONSECUTIVE_DAYS} consecutive days (this one is ${consecutiveDays}).`)
+      return
+    }
+    if (overMonthlyLimit) {
+      const bad = breakdown.find(m => m.total > MAX_MONTHLY_DAYS)
+      setError(`This would bring your ${bad.label} leave total to ${bad.total} days — the monthly limit is ${MAX_MONTHLY_DAYS}.`)
+      return
+    }
     setLoading(true)
     setError('')
 
@@ -82,6 +154,22 @@ export default function LeaveFormModal({ onClose, onSubmitted }) {
             </div>
           </div>
 
+          {dateFrom && dateTo && dateTo >= dateFrom && (
+            <div className={`text-xs rounded-xl px-3 py-2 border space-y-1 ${overConsecutiveLimit || overMonthlyLimit ? 'bg-red-50 border-red-100 text-red-600' : 'bg-slate-50 border-slate-100 text-slate-500'}`}>
+              <p>
+                {consecutiveDays} consecutive day{consecutiveDays === 1 ? '' : 's'} requested
+                {overConsecutiveLimit && ` — exceeds the ${MAX_CONSECUTIVE_DAYS}-day max per request.`}
+              </p>
+              {breakdown.map(m => (
+                <p key={m.label}>
+                  {m.label}: {m.total} / {MAX_MONTHLY_DAYS} day{MAX_MONTHLY_DAYS === 1 ? '' : 's'} used
+                  {m.existing > 0 && ` (${m.existing} already filed + ${m.adding} this request)`}
+                  {m.total > MAX_MONTHLY_DAYS && ' — over the monthly limit.'}
+                </p>
+              ))}
+            </div>
+          )}
+
           <div>
             <label className="text-xs font-semibold text-slate-500 uppercase">Substitute for Tasks</label>
             <select value={substituteId} onChange={e => setSubstituteId(e.target.value)} required
@@ -102,7 +190,7 @@ export default function LeaveFormModal({ onClose, onSubmitted }) {
 
           {error && <div className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{error}</div>}
 
-          <button type="submit" disabled={loading}
+          <button type="submit" disabled={loading || overConsecutiveLimit || overMonthlyLimit}
             className="w-full flex items-center justify-center gap-2 bg-nugold-500 hover:bg-nugold-600 text-nublue-900 font-semibold py-2.5 rounded-xl transition disabled:opacity-60">
             <Send size={16} /> {loading ? 'Submitting…' : 'Submit Leave Form'}
           </button>

@@ -1,8 +1,166 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import Navbar from '../components/Navbar.jsx'
-import { supabase, DEPARTMENTS, DIVISIONS_BY_DEPARTMENT } from '../supabaseClient'
+import { supabase, DEPARTMENTS, DIVISIONS_BY_DEPARTMENT, ACCOUNT_DEFAULT_PASSWORD } from '../supabaseClient'
 import { useAuth } from '../lib/auth.jsx'
-import { UserPlus, ShieldCheck, User, Mail, Lock, Briefcase, Building2, Layers } from 'lucide-react'
+import {
+  UserPlus, ShieldCheck, User, Mail, Lock, Briefcase, Building2, Layers,
+  Pencil, Trash2, KeyRound, X, Loader2, AlertTriangle,
+} from 'lucide-react'
+
+function EditAccountModal({ account, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    name: account.name || '',
+    email: account.email || '',
+    position: account.position || '',
+    department: account.department || DEPARTMENTS[0],
+    division: account.division || '',
+    role: account.role || 'officer',
+  })
+  const [saving, setSaving] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [msg, setMsg] = useState(null)
+
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+  const setDepartment = (e) => {
+    const department = e.target.value
+    setForm(f => ({ ...f, department, division: '' }))
+  }
+
+  const invoke = (action, extra = {}) =>
+    supabase.functions.invoke('manage-officer', { body: { action, userId: account.id, ...extra } })
+
+  const handleSave = async (e) => {
+    e.preventDefault()
+    setMsg(null)
+    setSaving(true)
+    try {
+      const { data, error } = await invoke('update', {
+        name: form.name.trim(),
+        email: form.email.trim(),
+        position: form.position.trim(),
+        department: form.department,
+        division: form.division.trim() || null,
+        role: form.role,
+      })
+      if (error) throw error
+      if (!data?.ok) throw new Error(data?.error || 'Failed to update account.')
+      onSaved()
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message || 'Failed to update account.' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    setMsg(null)
+    setResetting(true)
+    try {
+      const { data, error } = await invoke('reset-password')
+      if (error) throw error
+      if (!data?.ok) throw new Error(data?.error || 'Failed to reset password.')
+      setMsg({ type: 'success', text: `Password reset to the default (${ACCOUNT_DEFAULT_PASSWORD}).` })
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message || 'Failed to reset password.' })
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    setMsg(null)
+    setDeleting(true)
+    try {
+      const { data, error } = await invoke('delete')
+      if (error) throw error
+      if (!data?.ok) throw new Error(data?.error || 'Failed to delete account.')
+      onSaved()
+    } catch (err) {
+      setMsg({ type: 'error', text: err.message || 'Failed to delete account.' })
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg card-glow p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-bold text-slate-800 flex items-center gap-2"><Pencil size={16} /> Edit Account</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
+        </div>
+
+        <form onSubmit={handleSave} className="space-y-3.5">
+          <Field label="Full Name" icon={User} value={form.name} onChange={set('name')} required />
+          <Field label="Email" icon={Mail} type="email" value={form.email} onChange={set('email')} required />
+          <Field label="Position" icon={Briefcase} value={form.position} onChange={set('position')} required />
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Department</label>
+            <div className="mt-1 flex items-center border border-slate-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-nublue-500">
+              <Building2 size={16} className="text-nublue-400 mr-2 shrink-0" />
+              <select value={form.department} onChange={setDepartment} className="w-full outline-none text-sm bg-transparent">
+                {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Division</label>
+            <div className="mt-1 flex items-center border border-slate-200 rounded-xl px-3 py-2.5 focus-within:ring-2 focus-within:ring-nublue-500">
+              <Layers size={16} className="text-nublue-400 mr-2 shrink-0" />
+              <select value={form.division} onChange={set('division')} className="w-full outline-none text-sm bg-transparent">
+                <option value="">Select division…</option>
+                {(DIVISIONS_BY_DEPARTMENT[form.department] || []).map(d => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Role Tag</label>
+            <div className="mt-1 flex gap-2">
+              <button type="button" onClick={() => setForm(f => ({ ...f, role: 'officer' }))}
+                className={`flex-1 text-sm font-medium rounded-xl py-2 border transition ${form.role === 'officer' ? 'bg-nublue-600 text-white border-nublue-600' : 'border-slate-200 text-slate-500'}`}>
+                Officer
+              </button>
+              <button type="button" onClick={() => setForm(f => ({ ...f, role: 'admin' }))}
+                className={`flex-1 flex items-center justify-center gap-1 text-sm font-medium rounded-xl py-2 border transition ${form.role === 'admin' ? 'bg-nugold-500 text-nublue-900 border-nugold-500' : 'border-slate-200 text-slate-500'}`}>
+                <ShieldCheck size={14} /> Administrative
+              </button>
+            </div>
+          </div>
+
+          {msg && (
+            <div className={`text-xs rounded-lg px-3 py-2 border ${msg.type === 'success' ? 'text-emerald-600 bg-emerald-50 border-emerald-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
+              {msg.text}
+            </div>
+          )}
+
+          <button type="submit" disabled={saving}
+            className="w-full bg-nublue-600 hover:bg-nublue-700 text-white font-semibold py-2.5 rounded-xl transition shadow-glow disabled:opacity-60">
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </form>
+
+        <div className="mt-5 pt-5 border-t border-slate-100 space-y-2">
+          <button onClick={handleResetPassword} disabled={resetting}
+            className="w-full flex items-center justify-center gap-2 bg-amber-50 hover:bg-amber-100 text-amber-700 text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-60">
+            {resetting ? <Loader2 size={15} className="animate-spin" /> : <KeyRound size={15} />}
+            Reset Password to Default
+          </button>
+
+          <button onClick={handleDelete} disabled={deleting}
+            className={`w-full flex items-center justify-center gap-2 text-sm font-semibold py-2.5 rounded-xl transition disabled:opacity-60 ${confirmDelete ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-red-50 hover:bg-red-100 text-red-600'}`}>
+            {deleting ? <Loader2 size={15} className="animate-spin" /> : confirmDelete ? <AlertTriangle size={15} /> : <Trash2 size={15} />}
+            {deleting ? 'Deleting…' : confirmDelete ? 'Click again to confirm delete' : 'Delete Account'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Accounts() {
   const { profile } = useAuth()
@@ -13,6 +171,7 @@ export default function Accounts() {
   })
   const [submitting, setSubmitting] = useState(false)
   const [msg, setMsg] = useState(null)
+  const [editingAccount, setEditingAccount] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -152,7 +311,8 @@ export default function Accounts() {
                     <th className="py-2 pr-3 font-semibold">Position</th>
                     <th className="py-2 pr-3 font-semibold">Department</th>
                     <th className="py-2 pr-3 font-semibold">Division</th>
-                    <th className="py-2 font-semibold">Role</th>
+                    <th className="py-2 pr-3 font-semibold">Role</th>
+                    <th className="py-2 font-semibold"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -173,10 +333,16 @@ export default function Accounts() {
                       <td className="py-2.5 pr-3 text-slate-500">{a.position}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{a.department}</td>
                       <td className="py-2.5 pr-3 text-slate-500">{a.division || '—'}</td>
-                      <td className="py-2.5">
+                      <td className="py-2.5 pr-3">
                         <span className={`inline-flex items-center gap-1 text-[11px] font-bold uppercase px-2 py-0.5 rounded-full ${a.role === 'admin' ? 'bg-nugold-100 text-nugold-700' : 'bg-nublue-50 text-nublue-600'}`}>
                           {a.role === 'admin' && <ShieldCheck size={10} />} {a.role}
                         </span>
+                      </td>
+                      <td className="py-2.5">
+                        <button onClick={() => setEditingAccount(a)}
+                          className="flex items-center gap-1 text-xs font-semibold text-nublue-600 hover:text-nublue-700">
+                          <Pencil size={12} /> Edit
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -186,6 +352,14 @@ export default function Accounts() {
           )}
         </div>
       </div>
+
+      {editingAccount && (
+        <EditAccountModal
+          account={editingAccount}
+          onClose={() => setEditingAccount(null)}
+          onSaved={() => { setEditingAccount(null); load() }}
+        />
+      )}
     </div>
   )
 }
